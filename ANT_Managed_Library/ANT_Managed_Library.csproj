@@ -1,0 +1,113 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.30729</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{16270052-0DB5-41F9-8DD4-D1700E6E7281}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>ANT_Managed_Library</RootNamespace>
+    <AssemblyName>ANT_NET</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SignAssembly>false</SignAssembly>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <OldToolsVersion>3.5</OldToolsVersion>
+    <UpgradeBackupLocation />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>..\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <OutputPath>..\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <DocumentationFile>..\Release\ANT_NET.xml</DocumentationFile>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release_Arct|x86' ">
+    <OutputPath>..\Release_Arct\</OutputPath>
+    <DefineConstants>TRACE;INCLUDE_ARCT</DefineConstants>
+    <DocumentationFile>..\Release_Arct\ANT_NET.xml</DocumentationFile>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Xml.Linq">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data.DataSetExtensions">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ANTFS\ANTFS_ClientParameters.cs" />
+    <Compile Include="ANTFS\ANTFS_Common.cs" />
+    <Compile Include="ANTFS\ANTFS_ConfigParameters.cs" />
+    <Compile Include="ANTFS\ANTFS_DeviceParameters.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANTFS\ANTFS_Directory.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANTFS\ANTFS_Exception.cs" />
+    <Compile Include="ANTFS\ANTFS_ReferenceLibrary.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANTFS\ANTFS_RequestParameters.cs" />
+    <Compile Include="ANTFS\ANTFS_ResponseParameters.cs" />
+    <Compile Include="ANTFS\ANTFS_TransferStatus.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANT_Channel.cs" />
+    <Compile Include="ANT_ChannelID.cs" />
+    <Compile Include="ANT_Device.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANT_DeviceCapabilities.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="ANT_DeviceInfo.cs" />
+    <Compile Include="ANT_Exception.cs" />
+    <Compile Include="ANT_Common.cs" />
+    <Compile Include="ANT_ReferenceLibrary.cs" />
+    <Compile Include="ANT_Response.cs" />
+    <Compile Include="ANT_ChannelStatus.cs" />
+    <Compile Include="ANTFS\ANT_IntegratedANTFSClient.cs" />
+    <Compile Include="ANTFS\ANTFS_ClientChannel.cs" />
+    <Compile Include="ANTFS\ANTFS_HostChannel.cs" />
+    <Compile Include="IANT_Channel.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ANT_VersionInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </PropertyGroup>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

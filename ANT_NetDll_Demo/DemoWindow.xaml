@@ -1,0 +1,45 @@
+﻿<!--
+ This software is subject to the license described in the License.txt file
+ included with this software distribution. You may not use this file except
+ in compliance with this license.
+
+ Copyright (c) Dynastream Innovations Inc. 2016
+ All rights reserved.
+-->
+<Window x:Class="ANT_NetDll_Demo.DemoWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Window1" Height="768" Width="1024">
+    <Grid>
+        <Button Height="40.008" Margin="222,32,490,0" Name="button_Start" VerticalAlignment="Top" Background="LightGreen" Click="button_Start_Click">Start Demo</Button>
+        <ComboBox Height="23" Margin="0,40,264,0" Name="comboBox_demoMode" VerticalAlignment="Top" SelectedIndex="0" HorizontalAlignment="Right" Width="204">
+            <ComboBoxItem>Device 0 - Master, Device 1 - Slave</ComboBoxItem>
+            <ComboBoxItem>Device 0 Only - Master</ComboBoxItem>
+            <ComboBoxItem>Device 0 Only - Slave</ComboBoxItem>
+        </ComboBox>
+        <Border Name="border_DemoControls" BorderThickness="1" BorderBrush="#2F0000FF" CornerRadius="15" Margin="12,98,12,12" IsEnabled="False">
+            <Grid>
+                <TextBox HorizontalScrollBarVisibility="Auto" IsReadOnly="True" Margin="464,38,18,0" Name="textBox_device0" VerticalScrollBarVisibility="Auto" TextChanged="textBox_autoScroll" Height="248" VerticalAlignment="Top" />
+                <TextBox Height="250.05" HorizontalScrollBarVisibility="Auto" IsReadOnly="True" Margin="464,0,18,20" Name="textBox_device1" VerticalAlignment="Bottom" VerticalScrollBarVisibility="Auto" TextChanged="textBox_autoScroll" />
+                <Label Height="25.005" Margin="464,14,358,0" Name="label_device0" VerticalAlignment="Top">Device 0 - raw responses</Label>
+                <Label Height="25.005" Margin="464,0,348,268" Name="label_device1" VerticalAlignment="Bottom">Device 1 - raw responses</Label>
+
+                <GroupBox Header="Demo Control" Margin="26.058,44,0,28" Name="groupBox1" HorizontalAlignment="Left" Width="412">
+                    <Grid>
+                        <TextBox Margin="9.942,96,6,20" Name="textBox_Display" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" IsReadOnly="True" TextChanged="textBox_autoScroll"></TextBox>
+                        <ComboBox Height="23" Margin="9.942,34,102.058,0" Name="comboBox_actionList" VerticalAlignment="Top" SelectedIndex="0">
+                            <ComboBoxItem>Send Acknowledged Message (d0)</ComboBoxItem>
+                            <ComboBoxItem>Send Burst Message (d0)</ComboBoxItem>
+                            <ComboBoxItem>Set Broadcast to random value (d0)</ComboBoxItem>
+                            <ComboBoxItem>Request Capabilities</ComboBoxItem>
+                            <ComboBoxItem>Request Version</ComboBoxItem>
+                            <ComboBoxItem>Request Channel ID</ComboBoxItem>
+                            <ComboBoxItem>Request Status</ComboBoxItem>
+                        </ComboBox>
+                        <Button Height="46" HorizontalAlignment="Right" Margin="0,22,12,0" Name="button_DoAction" VerticalAlignment="Top" Width="75" Click="button_DoAction_Click">Do Action</Button>
+                    </Grid>
+                </GroupBox>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

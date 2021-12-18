@@ -1,0 +1,16 @@
+﻿<!--
+ This software is subject to the license described in the License.txt file
+ included with this software distribution. You may not use this file except
+ in compliance with this license.
+
+ Copyright (c) Dynastream Innovations Inc. 2016
+ All rights reserved.
+-->
+<Application x:Class="ANT_NetDll_Demo.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    StartupUri="DemoWindow.xaml">
+    <Application.Resources>
+         
+    </Application.Resources>
+</Application>
