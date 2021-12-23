@@ -86,9 +86,9 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_);
 static void MemoryCleanup(); //Deletes internal objects from memory
 
 extern "C" EXPORT
-BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate)
+BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType, UCHAR ucSerialFrameType)
 {
-    return ANT_InitExt(ucUSBDeviceNum, ulBaudrate, PORT_TYPE_USB, FRAMER_TYPE_BASIC);
+    return ANT_InitExt(ucUSBDeviceNum, ulBaudrate, ucPortType, ucSerialFrameType);
 }
 
 //Initializes and opens USB connection to the module
@@ -382,6 +382,16 @@ BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR uc
       return(pclMessageObject->AssignChannelExt(ucANTChannel, aucChannelType, 2, ucNetNumber, ulResponseTime_));
    }
    return(FALSE);
+}
+extern "C" EXPORT
+BOOL ANT_LibConfigCustom(UCHAR ucLibConfigFlags_, ULONG ulResponseTime_)
+{
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_LibConfigCustom()");
+#endif
+    if (pclMessageObject)
+        return pclMessageObject->SetLibConfig(ucLibConfigFlags_, ulResponseTime_);
+    return FALSE;
 }
 
 

@@ -45,7 +45,8 @@ EXPORT BOOL ANT_GetDeviceUSBPID(USHORT* pusPID_);
 EXPORT BOOL ANT_GetDeviceUSBVID(USHORT* pusVID_);
 EXPORT ULONG ANT_GetDeviceSerialNumber();
 
-EXPORT BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate);
+EXPORT BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate
+    , UCHAR ucPortType, UCHAR ucSerialFrameType); //Zwift compat?
 EXPORT BOOL ANT_InitExt(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType, UCHAR ucSerialFrameType);  //Initializes and opens USB connection to the module
 EXPORT void ANT_Close();   //Closes the USB connection to the module
 EXPORT const char* ANT_LibVersion(void); // Obtains the version number of the dynamic library
@@ -66,6 +67,7 @@ EXPORT BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHA
 
 EXPORT BOOL ANT_AssignChannelExt(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, UCHAR ucExtFlags_);
 EXPORT BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, UCHAR ucExtFlags_, ULONG ulResponseTime_);
+EXPORT BOOL ANT_LibConfigCustom(UCHAR ucLibConfigFlags_, ULONG ulResponseTime_);
 
 EXPORT BOOL ANT_SetChannelId(UCHAR ucANTChannel, USHORT usDeviceNumber, UCHAR ucDeviceType, UCHAR ucTransmissionType_);
 EXPORT BOOL ANT_SetChannelId_RTO(UCHAR ucANTChannel_, USHORT usDeviceNumber_, UCHAR ucDeviceType_, UCHAR ucTransmissionType_, ULONG ulResponseTime_);
