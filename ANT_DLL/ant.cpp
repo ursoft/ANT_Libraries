@@ -101,10 +101,13 @@ BOOL ANT_InitExt(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType_, UCHA
 
    assert(!bInitialized);         // IF ANT WAS ALREADY INITIALIZED, DO NOT CALL THIS FUNCTION BEFORE CALLING ANT_Close();
 
-
+   Sleep(5000);
 #if defined(DEBUG_FILE)
    DSIDebug::Init();
    DSIDebug::SetDebug(TRUE);
+   DSIDebug::ThreadInit("ant_api_calls.txt");
+   DSIDebug::ThreadEnable(TRUE);
+   DSIDebug::ThreadPrintf("ANT_InitExt(UCHAR ucUSBDeviceNum=%d, ULONG ulBaudrate=%d, UCHAR ucPortType_=%d, UCHAR ucSerialFrameType_=%d)", ucUSBDeviceNum, ulBaudrate, ucPortType_, ucSerialFrameType_);
 #endif
 
    //Create Serial object.
@@ -203,6 +206,9 @@ extern "C" EXPORT
 void ANT_Close(void)
 {
    DSI_THREAD_IDNUM eThread = DSIThread_GetCurrentThreadIDNum();
+#if defined(DEBUG_FILE)
+   DSIDebug::ThreadPrintf("ANT_Close()");
+#endif
 
    assert(eTheThread != eThread); // CANNOT CALL THIS FUNCTION FROM DLL THREAD (INSIDE DLL CALLBACK ROUTINES).
 
@@ -239,6 +245,9 @@ void ANT_Close(void)
 extern "C" EXPORT
 void ANT_AssignResponseFunction(RESPONSE_FUNC pfResponse_, UCHAR* pucResponseBuffer_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_AssignResponseFunction(RESPONSE_FUNC pfResponse_, UCHAR* pucResponseBuffer_)");
+#endif
    pfResponseFunc = pfResponse_;
    pucResponseBuffer = pucResponseBuffer_;
 }
@@ -254,6 +263,9 @@ void ANT_AssignResponseFunction(RESPONSE_FUNC pfResponse_, UCHAR* pucResponseBuf
 extern "C" EXPORT
 void ANT_AssignChannelEventFunction(UCHAR ucLink, CHANNEL_EVENT_FUNC pfLinkEvent, UCHAR *pucRxBuffer)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_AssignChannelEventFunction(UCHAR ucLink=%d, CHANNEL_EVENT_FUNC pfLinkEvent, UCHAR *pucRxBuffer)", ucLink);
+#endif
    if(ucLink < MAX_CHANNELS)
    {
       sLink[ucLink].pfLinkEvent = pfLinkEvent;
@@ -270,6 +282,9 @@ void ANT_AssignChannelEventFunction(UCHAR ucLink, CHANNEL_EVENT_FUNC pfLinkEvent
 extern "C" EXPORT
 void ANT_UnassignAllResponseFunctions()
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_UnassignAllResponseFunctions()");
+#endif
    pfResponseFunc = NULL;
    pucResponseBuffer = NULL;
    for(int i=0; i< MAX_CHANNELS; ++i)
@@ -290,6 +305,9 @@ void ANT_UnassignAllResponseFunctions()
 extern "C" EXPORT
 const char* ANT_LibVersion(void)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_LibVersion()");
+#endif
    return(SW_VER);
 }
 
@@ -301,6 +319,9 @@ const char* ANT_LibVersion(void)
 extern "C" EXPORT
 BOOL ANT_ResetSystem(void)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_ResetSystem()");
+#endif
    if(pclMessageObject)
       return(pclMessageObject->ResetSystem());
 
@@ -327,9 +348,12 @@ BOOL ANT_SetNetworkKey(UCHAR ucNetNumber, UCHAR *pucKey)
 extern "C" EXPORT
 BOOL ANT_SetNetworkKey_RTO(UCHAR ucNetNumber, UCHAR *pucKey, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetNetworkKey_RTO(ucNetNumber=%d)", ucNetNumber);
+#endif
    if(pclMessageObject)
    {
-      return(pclMessageObject->SetNetworkKey(ucNetNumber, pucKey, ulResponseTime_));
+      return pclMessageObject->SetNetworkKey(ucNetNumber, pucKey, ulResponseTime_);
    }
    return(FALSE);
 }
@@ -351,6 +375,9 @@ BOOL ANT_AssignChannel(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumb
 extern "C" EXPORT
 BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_AssignChannel_RTO(UCHAR ucANTChannel=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber=%d, ULONG ulResponseTime_=%d)", ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->AssignChannel(ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_));
@@ -375,6 +402,9 @@ BOOL ANT_AssignChannelExt(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetN
 extern "C" EXPORT
 BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, UCHAR ucExtFlags_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_AssignChannelExt_RTO(UCHAR ucANTChannel=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber=%d)", ucANTChannel, ucChannelType_, ucNetNumber);
+#endif
    if(pclMessageObject)
    {
       UCHAR aucChannelType[] = {ucChannelType_, ucExtFlags_};  // Channel Type + Extended Assignment Byte
@@ -413,6 +443,9 @@ BOOL ANT_UnAssignChannel(UCHAR ucANTChannel)
 extern "C" EXPORT
 BOOL ANT_UnAssignChannel_RTO(UCHAR ucANTChannel, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_UnAssignChannel_RTO(ucANTChannel=%d)", ucANTChannel);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->UnAssignChannel(ucANTChannel, ulResponseTime_));
@@ -439,6 +472,9 @@ BOOL ANT_SetChannelId(UCHAR ucANTChannel_, USHORT usDeviceNumber_, UCHAR ucDevic
 extern "C" EXPORT
 BOOL ANT_SetChannelId_RTO(UCHAR ucANTChannel_, USHORT usDeviceNumber_, UCHAR ucDeviceType_, UCHAR ucTransmissionType_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetChannelId_RTO(ucANTChannel_=%d, usDeviceNumber_=%d, ucDeviceType_=%d, ucTransmissionType_=%d, ulResponseTime_=%d)", ucANTChannel_, usDeviceNumber_, ucDeviceType_, ucTransmissionType_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetChannelID(ucANTChannel_, usDeviceNumber_, ucDeviceType_, ucTransmissionType_, ulResponseTime_));
@@ -464,6 +500,9 @@ BOOL ANT_SetChannelPeriod(UCHAR ucANTChannel_, USHORT usMesgPeriod_)
 extern "C" EXPORT
 BOOL ANT_SetChannelPeriod_RTO(UCHAR ucANTChannel_, USHORT usMesgPeriod_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetChannelPeriod_RTO(ucANTChannel_=%d, usMesgPeriod_=%d, ulResponseTime_=%d)", ucANTChannel_, usMesgPeriod_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetChannelPeriod(ucANTChannel_, usMesgPeriod_, ulResponseTime_));
@@ -514,6 +553,9 @@ BOOL ANT_SetLowPriorityChannelSearchTimeout(UCHAR ucANTChannel_, UCHAR ucSearchT
 extern "C" EXPORT
 BOOL ANT_SetLowPriorityChannelSearchTimeout_RTO(UCHAR ucANTChannel_, UCHAR ucSearchTimeout_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetLowPriorityChannelSearchTimeout_RTO(ucANTChannel_=%d, ucSearchTimeout_=%d, ulResponseTime_=%d)", ucANTChannel_, ucSearchTimeout_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetLowPriorityChannelSearchTimeout(ucANTChannel_, ucSearchTimeout_, ulResponseTime_));
@@ -540,6 +582,9 @@ BOOL ANT_SetChannelSearchTimeout(UCHAR ucANTChannel_, UCHAR ucSearchTimeout_)
 extern "C" EXPORT
 BOOL ANT_SetChannelSearchTimeout_RTO(UCHAR ucANTChannel_, UCHAR ucSearchTimeout_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetChannelSearchTimeout_RTO(ucANTChannel_=%d, ucSearchTimeout_=%d, ulResponseTime_=%d)", ucANTChannel_, ucSearchTimeout_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetChannelSearchTimeout(ucANTChannel_, ucSearchTimeout_, ulResponseTime_));
@@ -566,6 +611,9 @@ BOOL ANT_SetChannelRFFreq(UCHAR ucANTChannel_, UCHAR ucRFFreq_)
 extern "C" EXPORT
 BOOL ANT_SetChannelRFFreq_RTO(UCHAR ucANTChannel_, UCHAR ucRFFreq_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetChannelRFFreq_RTO(ucANTChannel_=%d, ucRFFreq_=%d, ulResponseTime_=%d)", ucANTChannel_, ucRFFreq_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetChannelRFFrequency(ucANTChannel_, ucRFFreq_, ulResponseTime_));
@@ -591,6 +639,9 @@ BOOL ANT_SetTransmitPower(UCHAR ucTransmitPower_)
 extern "C" EXPORT
 BOOL ANT_SetTransmitPower_RTO(UCHAR ucTransmitPower_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetTransmitPower_RTO(ucTransmitPower_=%d, ulResponseTime_=%d)", ucTransmitPower_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetAllChannelsTransmitPower(ucTransmitPower_, ulResponseTime_));
@@ -661,6 +712,9 @@ BOOL ANT_SetChannelTxPower(UCHAR ucANTChannel_, UCHAR ucTransmitPower_)
 extern "C" EXPORT
 BOOL ANT_SetChannelTxPower_RTO(UCHAR ucANTChannel_, UCHAR ucTransmitPower_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetChannelTxPower_RTO(ucANTChannel_=%d, ucTransmitPower_=%d, ulResponseTime_=%d)", ucANTChannel_, ucTransmitPower_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetChannelTransmitPower(ucANTChannel_, ucTransmitPower_, ulResponseTime_));
@@ -676,6 +730,9 @@ BOOL ANT_SetChannelTxPower_RTO(UCHAR ucANTChannel_, UCHAR ucTransmitPower_, ULON
 extern "C" EXPORT
 BOOL ANT_RequestMessage(UCHAR ucANTChannel_, UCHAR ucMessageID_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_RequestMessage(ucANTChannel_=%d, ucMessageID_=%d)", ucANTChannel_, ucMessageID_);
+#endif
    if(pclMessageObject){
       ANT_MESSAGE_ITEM stResponse;
       return pclMessageObject->SendRequest(ucMessageID_, ucANTChannel_, &stResponse, 0);
@@ -717,6 +774,9 @@ BOOL ANT_OpenChannel(UCHAR ucANTChannel_)
 extern "C" EXPORT
 BOOL ANT_OpenChannel_RTO(UCHAR ucANTChannel_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_OpenChannel_RTO(ucANTChannel_=%d, ulResponseTime_=%d)", ucANTChannel_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->OpenChannel(ucANTChannel_, ulResponseTime_));
@@ -742,6 +802,9 @@ BOOL ANT_CloseChannel(UCHAR ucANTChannel_)
 extern "C" EXPORT
 BOOL ANT_CloseChannel_RTO(UCHAR ucANTChannel_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_CloseChannel_RTO(ucANTChannel_=%d, ulResponseTime_=%d)", ucANTChannel_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->CloseChannel(ucANTChannel_, ulResponseTime_));
@@ -760,6 +823,9 @@ BOOL ANT_CloseChannel_RTO(UCHAR ucANTChannel_, ULONG ulResponseTime_)
 extern "C" EXPORT
 BOOL ANT_SendBroadcastData(UCHAR ucANTChannel_, UCHAR *pucData_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendBroadcastData(ucANTChannel_=%d)", ucANTChannel_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SendBroadcastData(ucANTChannel_, pucData_));
@@ -786,6 +852,9 @@ BOOL ANT_SendAcknowledgedData(UCHAR ucANTChannel_, UCHAR *pucData_)
 extern "C" EXPORT
 BOOL ANT_SendAcknowledgedData_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendAcknowledgedData_RTO(ucANTChannel_=%d)", ucANTChannel_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SendAcknowledgedData( ucANTChannel_, pucData_, ulResponseTime_));
@@ -810,6 +879,9 @@ BOOL ANT_SendBurstTransfer(UCHAR ucANTChannel_, UCHAR *pucData_, USHORT usNumDat
 extern "C" EXPORT
 BOOL ANT_SendBurstTransfer_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, USHORT usNumDataPackets_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendBurstTransfer_RTO(ucANTChannel_=%d)", ucANTChannel_);
+#endif
    ULONG ulSize = usNumDataPackets_*8;   // Pass the number of bytes.
    ANTFRAMER_RETURN eStatus;
 
@@ -844,6 +916,9 @@ BOOL ANT_InitCWTestMode(void)
 extern "C" EXPORT
 BOOL ANT_InitCWTestMode_RTO(ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_InitCWTestMode_RTO(ulResponseTime_=%d)", ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->InitCWTestMode(ulResponseTime_));
@@ -894,6 +969,9 @@ BOOL ANT_AddChannelID(UCHAR ucANTChannel_, USHORT usDeviceNumber_, UCHAR ucDevic
 extern "C" EXPORT
 BOOL ANT_AddChannelID_RTO(UCHAR ucANTChannel_, USHORT usDeviceNumber_, UCHAR ucDeviceType_, UCHAR ucTransmissionType_, UCHAR ucListIndex_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_AddChannelID_RTO(ucANTChannel_=%d, usDeviceNumber_=%d, ucDeviceType_=%d, ucTransmissionType_=%d, ucListIndex_=%d, ulResponseTime_=%d)", ucANTChannel_, usDeviceNumber_, ucDeviceType_, ucTransmissionType_, ucListIndex_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->AddChannelID(ucANTChannel_, usDeviceNumber_, ucDeviceType_, ucTransmissionType_, ucListIndex_, ulResponseTime_));
@@ -919,6 +997,9 @@ BOOL ANT_ConfigList(UCHAR ucANTChannel_, UCHAR ucListSize_, UCHAR ucExclude_)
 extern "C" EXPORT
 BOOL ANT_ConfigList_RTO(UCHAR ucANTChannel_, UCHAR ucListSize_, UCHAR ucExclude_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_ConfigList_RTO(ucANTChannel_=%d, ucListSize_=%d, ucExclude_=%d, ulResponseTime_=%d)", ucANTChannel_, ucListSize_, ucExclude_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->ConfigList(ucANTChannel_, ucListSize_, ucExclude_, ulResponseTime_));
@@ -943,6 +1024,9 @@ BOOL ANT_OpenRxScanMode()
 extern "C" EXPORT
 BOOL ANT_OpenRxScanMode_RTO(ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_OpenRxScanMode_RTO(ulResponseTime_=%d)", ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->OpenRxScanMode(ulResponseTime_));
@@ -968,6 +1052,9 @@ BOOL ANT_ConfigFrequencyAgility(UCHAR ucANTChannel_, UCHAR ucFreq1_, UCHAR ucFre
 extern "C" EXPORT
 BOOL ANT_ConfigFrequencyAgility_RTO(UCHAR ucANTChannel_, UCHAR ucFreq1_, UCHAR ucFreq2_, UCHAR ucFreq3_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_ConfigFrequencyAgility_RTO(ucANTChannel_=%d, ucFreq1_=%d, ucFreq2_=%d, ucFreq3_=%d, ulResponseTime_=%d)", ucANTChannel_, ucFreq1_, ucFreq2_, ucFreq3_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->ConfigFrequencyAgility(ucANTChannel_, ucFreq1_, ucFreq2_, ucFreq3_, ulResponseTime_));
@@ -992,6 +1079,9 @@ BOOL ANT_SetProximitySearch(UCHAR ucANTChannel_, UCHAR ucSearchThreshold_)
 extern "C" EXPORT
 BOOL ANT_SetProximitySearch_RTO(UCHAR ucANTChannel_, UCHAR ucSearchThreshold_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetProximitySearch_RTO(ucANTChannel_=%d, ucSearchThreshold_=%d, ulResponseTime_=%d)", ucANTChannel_, ucSearchThreshold_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetProximitySearch(ucANTChannel_, ucSearchThreshold_, ulResponseTime_));
@@ -1160,6 +1250,9 @@ BOOL ANT_SleepMessage()
 extern "C" EXPORT
 BOOL ANT_SleepMessage_RTO(ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SleepMessage_RTO(ulResponseTime_=%d)", ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SleepMessage(ulResponseTime_));
@@ -1185,6 +1278,9 @@ BOOL ANT_CrystalEnable()
 extern "C" EXPORT
 BOOL ANT_CrystalEnable_RTO(ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_CrystalEnable_RTO(ulResponseTime_=%d)", ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->CrystalEnable(ulResponseTime_));
@@ -1407,6 +1503,9 @@ BOOL FIT_AdjustPairingSettings_RTO(UCHAR ucSearchLv_, UCHAR ucPairLv_, UCHAR ucT
 extern "C" EXPORT
 BOOL ANT_SendExtBroadcastData(UCHAR ucANTChannel_, UCHAR *pucData_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendExtBroadcastData(ucANTChannel_=%d)", ucANTChannel_);
+#endif
    if(!pclMessageObject)
       return FALSE;
    return pclMessageObject->SendExtBroadcastData(ucANTChannel_, pucData_);
@@ -1431,6 +1530,9 @@ BOOL ANT_SendExtAcknowledgedData(UCHAR ucANTChannel_, UCHAR *pucData_)
 extern "C" EXPORT
 BOOL ANT_SendExtAcknowledgedData_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendExtAcknowledgedData_RTO(ucANTChannel_=%d, ulResponseTime_=%d)", ucANTChannel_, ulResponseTime_);
+#endif
    if(!pclMessageObject)
       return FALSE;
 
@@ -1454,6 +1556,9 @@ BOOL ANT_SendExtAcknowledgedData_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, ULONG
 extern "C" EXPORT
 BOOL ANT_SendExtBurstTransferPacket(UCHAR ucANTChannelSeq_, UCHAR *pucData_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendExtBurstTransferPacket(ucANTChannelSeq_=%d)", ucANTChannelSeq_);
+#endif
    if(pclMessageObject)
    {
       ANT_MESSAGE stMessage;
@@ -1484,6 +1589,9 @@ USHORT ANT_SendExtBurstTransfer(UCHAR ucANTChannel_, UCHAR *pucData_, USHORT usD
 extern "C" EXPORT
 USHORT ANT_SendExtBurstTransfer_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, USHORT usDataPackets_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SendExtBurstTransfer_RTO(ucANTChannel_=%d, usDataPackets_=%d, ulResponseTime_=%d)", ucANTChannel_, usDataPackets_, ulResponseTime_);
+#endif
    if(!pclMessageObject)
       return FALSE;
 
@@ -1508,6 +1616,9 @@ BOOL ANT_RxExtMesgsEnable(UCHAR ucEnable_)
 extern "C" EXPORT
 BOOL ANT_RxExtMesgsEnable_RTO(UCHAR ucEnable_, ULONG ulResponseTimeout_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_RxExtMesgsEnable_RTO(ucEnable_=%d, ulResponseTimeout_=%d)", ucEnable_, ulResponseTimeout_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->RxExtMesgsEnable(ucEnable_, ulResponseTimeout_));
@@ -1533,6 +1644,9 @@ BOOL ANT_SetSerialNumChannelId(UCHAR ucANTChannel_, UCHAR ucDeviceType_, UCHAR u
 extern "C" EXPORT
 BOOL ANT_SetSerialNumChannelId_RTO(UCHAR ucANTChannel_, UCHAR ucDeviceType_, UCHAR ucTransmissionType_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_SetSerialNumChannelId_RTO(ucANTChannel_=%d, ucDeviceType_=%d, ucTransmissionType_=%d, ulResponseTime_=%d)", ucANTChannel_, ucDeviceType_, ucTransmissionType_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->SetSerialNumChannelId(ucANTChannel_, ucDeviceType_, ucTransmissionType_, ulResponseTime_));
@@ -1558,6 +1672,9 @@ BOOL ANT_EnableLED(UCHAR ucEnable_)
 extern "C" EXPORT
 BOOL ANT_EnableLED_RTO(UCHAR ucEnable_, ULONG ulResponseTime_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_EnableLED_RTO(ucEnable_=%d, ulResponseTime_=%d)", ucEnable_, ulResponseTime_);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->EnableLED(ucEnable_, ulResponseTime_));
@@ -1573,6 +1690,9 @@ BOOL ANT_EnableLED_RTO(UCHAR ucEnable_, ULONG ulResponseTime_)
 extern "C" EXPORT
 BOOL ANT_GetDeviceUSBInfo(UCHAR ucDeviceNum, UCHAR* pucProductString, UCHAR* pucSerialString)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_GetDeviceUSBInfo(ucDeviceNum=%d)", ucDeviceNum);
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->GetDeviceUSBInfo(ucDeviceNum, pucProductString, pucSerialString, USB_MAX_STRLEN));
@@ -1586,6 +1706,9 @@ BOOL ANT_GetDeviceUSBInfo(UCHAR ucDeviceNum, UCHAR* pucProductString, UCHAR* puc
 extern "C" EXPORT
 BOOL ANT_GetDeviceUSBPID(USHORT* pusPID_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_GetDeviceUSBPID()");
+#endif
    if(pclMessageObject)
    {
       return(pclMessageObject->GetDeviceUSBPID(*pusPID_));
@@ -1917,6 +2040,9 @@ BOOL ANT_SetDebugLogDirectory(char* pcDirectory)
 extern "C" EXPORT
 void ANT_Nap(ULONG ulMilliseconds_)
 {
+#if defined(DEBUG_FILE)
+    DSIDebug::ThreadPrintf("ANT_Nap(ulMilliseconds_=%d)", ulMilliseconds_);
+#endif
    DSIThread_Sleep(ulMilliseconds_);
 }
 
