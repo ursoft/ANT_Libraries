@@ -162,8 +162,9 @@ BOOL DSIDebug::Init()
    bWriteEnable = FALSE;
 
    //Get the Directory of the executable
-   DSIThread_GetWorkingDirectory(aucExecutablePath, MAX_NAME_LENGTH);
-   STRNCPY((char*)aucLogDirectory, (char*)aucExecutablePath, MAX_NAME_LENGTH);
+   //DSIThread_GetWorkingDirectory(aucExecutablePath, MAX_NAME_LENGTH);
+   //STRNCPY((char*)aucLogDirectory, (char*)aucExecutablePath, MAX_NAME_LENGTH);
+   STRNCPY((char*)aucLogDirectory, (char*)"c:\\tmp\\", MAX_NAME_LENGTH);
 
    for(UCHAR i=0; i<MAX_PORTS; i++)
       apclSerialBuffer[i] = (Buffer*)NULL;
@@ -696,7 +697,7 @@ BOOL Buffer::Add(UCHAR* pucString_, ULONG ulSize_)
    ulInput = ulNewInput;
 
    //Send a flush signal if the buffer is getting full
-   if(GetPercentFull() >= FLUSH_PERCENT)
+   //if(GetPercentFull() >= FLUSH_PERCENT)
       SignalFlush();
 
    DSIThread_MutexUnlock(&stInputMutex);
