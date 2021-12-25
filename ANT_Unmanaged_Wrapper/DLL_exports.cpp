@@ -1024,10 +1024,12 @@ EXPORT USHORT ANT_GetMessage(DSIFramerANT* FramerPtr, MARSHALL_ANT_MESSAGE* stRe
 ///////////////////////////////////////////////////////////////////////
 EXPORT BOOL ANT_EnableDebugLogging()
 {
-   if(!DSIDebug::Init())
+#if defined(DEBUG_FILE)
+    if(!DSIDebug::Init())
       return FALSE;
-   DSIDebug::SetDebug(TRUE);
-   return TRUE;
+    DSIDebug::SetDebug(TRUE);
+#endif
+    return TRUE;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1035,8 +1037,10 @@ EXPORT BOOL ANT_EnableDebugLogging()
 ///////////////////////////////////////////////////////////////////////
 EXPORT void ANT_DisableDebugLogging()
 {
-   DSIDebug::SetDebug(FALSE);
-   DSIDebug::Close();
+#if defined(DEBUG_FILE)
+    DSIDebug::SetDebug(FALSE);
+    DSIDebug::Close();
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1044,7 +1048,11 @@ EXPORT void ANT_DisableDebugLogging()
 ///////////////////////////////////////////////////////////////////////
 EXPORT BOOL ANT_SetDebugLogDirectory(char* pcDirectory)
 {
-   return DSIDebug::SetDirectory(pcDirectory);
+#if defined(DEBUG_FILE)
+    return DSIDebug::SetDirectory(pcDirectory);
+#else
+    return TRUE;
+#endif
 }
 
 
@@ -1053,7 +1061,11 @@ EXPORT BOOL ANT_SetDebugLogDirectory(char* pcDirectory)
 ///////////////////////////////////////////////////////////////////////
 EXPORT BOOL ANT_DebugThreadInit(char* pucName_)
 {
-   return DSIDebug::ThreadInit(pucName_);
+#if defined(DEBUG_FILE)
+    return DSIDebug::ThreadInit(pucName_);
+#else
+    return TRUE;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1061,7 +1073,11 @@ EXPORT BOOL ANT_DebugThreadInit(char* pucName_)
 ///////////////////////////////////////////////////////////////////////
 EXPORT BOOL ANT_DebugThreadWrite(char* pcMessage_)
 {
-   return DSIDebug::ThreadWrite(pcMessage_);
+#if defined(DEBUG_FILE)
+    return DSIDebug::ThreadWrite(pcMessage_);
+#else
+    return TRUE;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1069,7 +1085,11 @@ EXPORT BOOL ANT_DebugThreadWrite(char* pcMessage_)
 ///////////////////////////////////////////////////////////////////////
 EXPORT BOOL ANT_DebugResetTime()
 {
-   return DSIDebug::ResetTime();
+#if defined(DEBUG_FILE)
+    return DSIDebug::ResetTime();
+#else
+    return TRUE;
+#endif
 }
 
 

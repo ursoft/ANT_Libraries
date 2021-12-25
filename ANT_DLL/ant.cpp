@@ -225,6 +225,7 @@ void ANT_Close(void)
    DSI_THREAD_IDNUM eThread = DSIThread_GetCurrentThreadIDNum();
 #if defined(DEBUG_FILE)
    DSIDebug::ThreadPrintf("ANT_Close()");
+   DSIDebug::Close();
 #endif
 
    assert(eTheThread != eThread); // CANNOT CALL THIS FUNCTION FROM DLL THREAD (INSIDE DLL CALLBACK ROUTINES).
@@ -246,10 +247,6 @@ void ANT_Close(void)
    DSIThread_CondDestroy(&condTestDone);
 
    MemoryCleanup();
-
-#if defined(DEBUG_FILE)
-   DSIDebug::Close();
-#endif
 }
 
 
@@ -344,6 +341,7 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
                 glbEdgeRemoteChannelRxBuffer[ucDataOffset + 5],
                 glbEdgeRemoteChannelRxBuffer[ucDataOffset + 6],
                 glbEdgeRemoteChannelRxBuffer[ucDataOffset + 7]);
+#endif
             if (glbEdgeRemoteChannelRxBuffer[ucDataOffset + 0] == 0x49) {
                 /*
                         49-0D-56-01-00-02-24-00 - quick lap press (lap = 36 dec). Длинного и повтора нет.
@@ -354,30 +352,39 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
                 */
                 switch (glbEdgeRemoteChannelRxBuffer[ucDataOffset + 6] + 256 * glbEdgeRemoteChannelRxBuffer[ucDataOffset + 7]) {
                 case 0:
+#if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Screen: long press");
+#endif
                     EmitZwiftKeyPress(VK_RETURN);
                     break;
                 case 1:
+#if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Screen: quick press");
+#endif
                     EmitZwiftKeyPress(VK_RIGHT);
                     break;
                 case 32768:
+#if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Blue: quick press");
+#endif
                     EmitZwiftKeyPress(VK_LEFT);
                     break;
                 case 32769:
+#if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Blue: long press");
+#endif
                     EmitZwiftKeyPress(VK_ESCAPE);
                     break;
                 case 36:
+#if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Lap: quick press");
+#endif
                     EmitZwiftKeyPress(VK_UP);
                     break;
                 default:
                     break;
                 }
             }
-#endif
         }
     }
     return TRUE;

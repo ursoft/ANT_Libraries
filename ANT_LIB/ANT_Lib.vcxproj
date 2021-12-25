@@ -118,7 +118,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <AdditionalIncludeDirectories>$(ProjectDir)inc;$(ProjectDir)common;$(ProjectDir)libraries;$(ProjectDir)software\ANTFS;$(ProjectDir)software\system;$(ProjectDir)software\serial\device_management;$(ProjectDir)software\serial;$(ProjectDir)software\USB;$(ProjectDir)software\USB\devices;$(ProjectDir)software\USB\device_handles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_WINDOWS;DEBUG_FILE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeader />
@@ -134,7 +134,7 @@
       <Optimization>MaxSpeed</Optimization>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <AdditionalIncludeDirectories>$(ProjectDir)inc;$(ProjectDir)common;$(ProjectDir)libraries;$(ProjectDir)software\ANTFS;$(ProjectDir)software\system;$(ProjectDir)software\serial\device_management;$(ProjectDir)software\serial;$(ProjectDir)software\USB;$(ProjectDir)software\USB\devices;$(ProjectDir)software\USB\device_handles;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_WINDOWS;DEBUG_FILE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeader>
