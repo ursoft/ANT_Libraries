@@ -33,7 +33,7 @@ namespace ANT_Console_Demo
     {
         static readonly byte CHANNEL_TYPE_INVALID = 2;
 
-        static readonly byte USER_ANT_CHANNEL = 0;         // ANT Channel to use
+        static readonly byte USER_ANT_CHANNEL = 7;         // ANT Channel to use
 
         //static readonly ushort USER_DEVICENUM = 20228;    // Device number: HR receiver
         //static readonly byte USER_DEVICETYPE = 120;       // Device type: HR receiver

@@ -7,23 +7,24 @@ typedef void *(*fptr_ptr_void)();
 typedef void (__fastcall *fptr_void_ptr)(void *);
 typedef void *(__fastcall *fptr_ptr_ptr)(void *);
 typedef void (*fptr_void_void)();
+typedef void *(__fastcall *fptr_ptr_bool2)(bool, bool);
 
 extern "C" {
     __declspec(dllexport) char __fastcall BLEPairToDevice(void *a1) {
         static fptr_bool_ptr real = (fptr_bool_ptr)GetProcAddress(org, "BLEPairToDevice");
         return real(a1);
     }
-    __declspec(dllexport) void *BLEInitBLEFlags() {
-        static fptr_ptr_void real = (fptr_ptr_void)GetProcAddress(org, "BLEInitBLEFlags");
-        return real();
+    __declspec(dllexport) void *BLEInitBLEFlags(void *a1) {
+        static fptr_ptr_ptr real = (fptr_ptr_ptr)GetProcAddress(org, "BLEInitBLEFlags");
+        return real(a1);
     }
-    __declspec(dllexport) void *BLEPurgeDeviceList() {
-        static fptr_ptr_void real = (fptr_ptr_void)GetProcAddress(org, "BLEPurgeDeviceList");
-        return real();
+    __declspec(dllexport) void * __fastcall BLEPurgeDeviceList(bool a1, bool a2) {
+        static fptr_ptr_bool2 real = (fptr_ptr_bool2)GetProcAddress(org, "BLEPurgeDeviceList");
+        return real(a1, a2);
     }
-    __declspec(dllexport) void BLESetAssertFunc() {
-        static fptr_void_void real = (fptr_void_void)GetProcAddress(org, "BLESetAssertFunc");
-        return real();
+    __declspec(dllexport) void BLESetAssertFunc(void* a1) {
+        static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetAssertFunc");
+        return real(a1);
     }
     __declspec(dllexport) void __fastcall BLESetConnectionStatusCBFunc(void* a1) {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetConnectionStatusCBFunc");

@@ -94,8 +94,6 @@ BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType, UCHAR uc
 #ifdef ENABLE_EDGE_REMOTE
 int glbZWIFT_EDGE_REMOTE = 0; //need also environment variable "ZWIFT_EDGE_REMOTE=20_bit_edge_id"
 BOOL glbEdgeRemoteBroadcasting = 0;
-CHANNEL_EVENT_FUNC glbSteeringSimulatorEventFunc = NULL; //заготовка, т.к. пока что руление в Zwift через Ant+ не реализовано
-UCHAR *glbSteeringSimulatorRxBuf = NULL;
 #endif
 
 //Initializes and opens USB connection to the module
@@ -299,11 +297,11 @@ void EmitZwiftKeyPress(WORD key) {
 }
 
 static UCHAR glbEdgeRemoteChannelRxBuffer[/*MAX_CHANNEL_EVENT_SIZE*/ 41];
-BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel, UCHAR ucEvent) {
+BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
 #if defined(DEBUG_FILE)
-    DSIDebug::ThreadPrintf("EdgeRemoteLinkEvent(ucANTChannel=%d, ucEvent=%d) glbEdgeRemoteBroadcasting=%d", ucANTChannel, ucEvent, glbEdgeRemoteBroadcasting);
+    DSIDebug::ThreadPrintf("EdgeRemoteLinkEvent(ucANTChannel_=%d, ucEvent=%d) glbEdgeRemoteBroadcasting=%d", ucANTChannel_, ucEvent, glbEdgeRemoteBroadcasting);
 #endif
-    if (glbZWIFT_EDGE_REMOTE && ucANTChannel == 0) {
+    if (glbZWIFT_EDGE_REMOTE && ucANTChannel_ == 7) {
         int ucDataOffset = 0;
         switch (ucEvent) {
         case EVENT_RX_FLAG_ACKNOWLEDGED: case EVENT_RX_FLAG_BURST_PACKET: case EVENT_RX_FLAG_BROADCAST:
@@ -318,9 +316,9 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel, UCHAR ucEvent) {
                 static UCHAR tx[] = "\2\0\xff\0\0\0\0\x10";
                 if (pclMessageObject) {
 #if defined(DEBUG_FILE)
-                    DSIDebug::ThreadPrintf("ANT_SendBroadcastDataEdgeRemote(ucANTChannel_=%d)", ucANTChannel);
+                    DSIDebug::ThreadPrintf("ANT_SendBroadcastDataEdgeRemote(ucANTChannel_=%d)", ucANTChannel_);
 #endif
-                    pclMessageObject->SendBroadcastData(ucANTChannel, tx);
+                    pclMessageObject->SendBroadcastData(ucANTChannel_, tx);
                 }
                 return(FALSE);
             }
@@ -329,9 +327,9 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel, UCHAR ucEvent) {
             glbEdgeRemoteBroadcasting = FALSE;
             if (pclMessageObject) {
 #if defined(DEBUG_FILE)
-            DSIDebug::ThreadPrintf("ANT_UnAssignChannelEdgeRemote(ucANTChannel=%d)", ucANTChannel);
+            DSIDebug::ThreadPrintf("ANT_UnAssignChannelEdgeRemote(ucANTChannel_=%d)", ucANTChannel_);
 #endif
-                pclMessageObject->UnAssignChannel(ucANTChannel, 0);
+                pclMessageObject->UnAssignChannel(ucANTChannel_, 0);
             }
             break;
         }
@@ -415,14 +413,6 @@ void ANT_AssignChannelEventFunction(UCHAR ucLink, CHANNEL_EVENT_FUNC pfLinkEvent
 #if defined(DEBUG_FILE)
     DSIDebug::ThreadPrintf("ANT_AssignChannelEventFunction(UCHAR ucLink=%d, CHANNEL_EVENT_FUNC pfLinkEvent, UCHAR *pucRxBuffer)", ucLink);
 #endif
-#ifdef ENABLE_EDGE_REMOTE
-    if (glbZWIFT_EDGE_REMOTE && ucLink == 0) { //забираем 0-й канал себе
-      sLink[ucLink].pfLinkEvent = EdgeRemoteLinkEvent;
-      sLink[ucLink].pucRxBuffer = glbEdgeRemoteChannelRxBuffer;
-      glbSteeringSimulatorEventFunc = pfLinkEvent;
-      glbSteeringSimulatorRxBuf = pucRxBuffer;
-    } else
-#endif
    if(ucLink < MAX_CHANNELS)
    {
       sLink[ucLink].pfLinkEvent = pfLinkEvent;
@@ -494,23 +484,23 @@ BOOL ANT_ResetSystem(void)
 //!! This is (should be) a private network function
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_SetNetworkKey(UCHAR ucNetNumber, UCHAR *pucKey)
+BOOL ANT_SetNetworkKey(UCHAR ucNetNumber_, UCHAR *pucKey)
 {
-   return ANT_SetNetworkKey_RTO(ucNetNumber, pucKey, 0);
+   return ANT_SetNetworkKey_RTO(ucNetNumber_, pucKey, 0);
 }
 
 ///////////////////////////////////////////////////////////////////////
 // Response TimeOut Version
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_SetNetworkKey_RTO(UCHAR ucNetNumber, UCHAR *pucKey, ULONG ulResponseTime_)
+BOOL ANT_SetNetworkKey_RTO(UCHAR ucNetNumber_, UCHAR *pucKey, ULONG ulResponseTime_)
 {
 #if defined(DEBUG_FILE)
-    DSIDebug::ThreadPrintf("ANT_SetNetworkKey_RTO(ucNetNumber=%d)", ucNetNumber);
+    DSIDebug::ThreadPrintf("ANT_SetNetworkKey_RTO(ucNetNumber_=%d)", ucNetNumber_);
 #endif
    if(pclMessageObject)
    {
-      return pclMessageObject->SetNetworkKey(ucNetNumber, pucKey, ulResponseTime_);
+      return pclMessageObject->SetNetworkKey(ucNetNumber_, pucKey, ulResponseTime_);
    }
    return(FALSE);
 }
@@ -521,32 +511,32 @@ BOOL ANT_SetNetworkKey_RTO(UCHAR ucNetNumber, UCHAR *pucKey, ULONG ulResponseTim
 // Called by the application to assign a channel
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_AssignChannel(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber)
+BOOL ANT_AssignChannel(UCHAR ucANTChannel_, UCHAR ucChannelType_, UCHAR ucNetNumber_)
 {
-   return ANT_AssignChannel_RTO(ucANTChannel, ucChannelType_, ucNetNumber, 0);
+   return ANT_AssignChannel_RTO(ucANTChannel_, ucChannelType_, ucNetNumber_, 0);
 }
 
-bool ActionEnabled(UCHAR ucANTChannel) {
-    if (nullptr == pclMessageObject) return false;
+bool ActionEnabled(UCHAR ucANTChannel_) {
+    if (nullptr == pclMessageObject) return FALSE;
 #ifdef ENABLE_EDGE_REMOTE
-    if (glbZWIFT_EDGE_REMOTE && ucANTChannel == 0) //забираем 0-й канал себе
-        return false;
+    if (glbZWIFT_EDGE_REMOTE && ucANTChannel_ == 7) //забираем 7-й канал себе
+        return FALSE;
     else
 #endif
-        return true;
+        return TRUE;
 }
 ///////////////////////////////////////////////////////////////////////
 // Response TimeOut Version
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, ULONG ulResponseTime_)
+BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel_, UCHAR ucChannelType_, UCHAR ucNetNumber_, ULONG ulResponseTime_)
 {
 #if defined(DEBUG_FILE)
-    DSIDebug::ThreadPrintf("ANT_AssignChannel_RTO(UCHAR ucANTChannel=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber=%d, ULONG ulResponseTime_=%d)", ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_);
+    DSIDebug::ThreadPrintf("ANT_AssignChannel_RTO(UCHAR ucANTChannel_=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber_=%d, ULONG ulResponseTime_=%d)", ucANTChannel_, ucChannelType_, ucNetNumber_, ulResponseTime_);
 #endif
-   if(ActionEnabled(ucANTChannel) || ucNetNumber != 0)
+   if(ActionEnabled(ucANTChannel_))
    {
-       return(pclMessageObject->AssignChannel(ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_));
+       return(pclMessageObject->AssignChannel(ucANTChannel_, ucChannelType_, ucNetNumber_, ulResponseTime_));
    }
    return(FALSE);
 }
@@ -557,23 +547,25 @@ BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNet
 // Called by the application to assign a channel using extended assignment
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_AssignChannelExt(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, UCHAR ucExtFlags_)
+BOOL ANT_AssignChannelExt(UCHAR ucANTChannel_, UCHAR ucChannelType_, UCHAR ucNetNumber_, UCHAR ucExtFlags_)
 {
-   return ANT_AssignChannelExt_RTO(ucANTChannel, ucChannelType_, ucNetNumber, ucExtFlags_, 0);
+   return ANT_AssignChannelExt_RTO(ucANTChannel_, ucChannelType_, ucNetNumber_, ucExtFlags_, 0);
 }
 
 ///////////////////////////////////////////////////////////////////////
 // Response TimeOut Version
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNetNumber, UCHAR ucExtFlags_, ULONG ulResponseTime_)
+BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel_, UCHAR ucChannelType_, UCHAR ucNetNumber_, UCHAR ucExtFlags_, ULONG ulResponseTime_)
 {
 #if defined(DEBUG_FILE)
-    DSIDebug::ThreadPrintf("ANT_AssignChannelExt_RTO(UCHAR ucANTChannel=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber=%d)", ucANTChannel, ucChannelType_, ucNetNumber);
+    DSIDebug::ThreadPrintf("ANT_AssignChannelExt_RTO(UCHAR ucANTChannel_=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber_=%d)", ucANTChannel_, ucChannelType_, ucNetNumber_);
 #endif
 #ifdef ENABLE_EDGE_REMOTE
-   if (pclMessageObject && ucANTChannel == 0 && ucNetNumber == 0 && glbEdgeRemoteBroadcasting == FALSE) {
-       UCHAR edgeRemoteAntChannel = 0;
+   if (pclMessageObject && ucANTChannel_ == 0 && glbEdgeRemoteBroadcasting == FALSE) {
+       UCHAR edgeRemoteAntChannel = 7;
+       sLink[edgeRemoteAntChannel].pfLinkEvent = EdgeRemoteLinkEvent;
+       sLink[edgeRemoteAntChannel].pucRxBuffer = glbEdgeRemoteChannelRxBuffer;
        if (pclMessageObject->AssignChannel(edgeRemoteAntChannel, PARAMETER_TX_NOT_RX, 0/*USER_NETWORK_NUM*/, 500)) {
            if (pclMessageObject->SetChannelID(edgeRemoteAntChannel, (USHORT)glbZWIFT_EDGE_REMOTE, 16 /*USER_DEVICETYPE=control*/, 5 + ((glbZWIFT_EDGE_REMOTE >> 16) << 4)/*USER_TRANSTYPE*/, 500)) {
                if (pclMessageObject->SetChannelRFFrequency(edgeRemoteAntChannel, 57 /*ANT+ USER_RADIOFREQ*/, 500)) {
@@ -604,15 +596,15 @@ BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR uc
        else DSIDebug::ThreadPrintf("AssignChannel(edgeRemoteAntChannel=%d, PARAMETER_TX_NOT_RX, 0, 500)=FALSE", edgeRemoteAntChannel);
 #endif
    }
-#endif
-   if(ActionEnabled(ucANTChannel) || ucNetNumber != 0)
+#endif //ENABLE_EDGE_REMOTE
+   if(ActionEnabled(ucANTChannel_))
    {
       UCHAR aucChannelType[] = {ucChannelType_, ucExtFlags_};  // Channel Type + Extended Assignment Byte
 
-      return(pclMessageObject->AssignChannelExt(ucANTChannel, aucChannelType, 2, ucNetNumber, ulResponseTime_));
+      return(pclMessageObject->AssignChannelExt(ucANTChannel_, aucChannelType, 2, ucNetNumber_, ulResponseTime_));
    } 
 
-   return(FALSE);
+   return FALSE;
 }
 extern "C" EXPORT
 BOOL ANT_LibConfigCustom(UCHAR ucLibConfigFlags_, ULONG ulResponseTime_)
@@ -633,25 +625,25 @@ BOOL ANT_LibConfigCustom(UCHAR ucLibConfigFlags_, ULONG ulResponseTime_)
 // Called by the application to unassign a channel
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_UnAssignChannel(UCHAR ucANTChannel)
+BOOL ANT_UnAssignChannel(UCHAR ucANTChannel_)
 {
-   return ANT_UnAssignChannel_RTO(ucANTChannel, 0);
+   return ANT_UnAssignChannel_RTO(ucANTChannel_, 0);
 }
 
 ///////////////////////////////////////////////////////////////////////
 // Response TimeOut Version
 ///////////////////////////////////////////////////////////////////////
 extern "C" EXPORT
-BOOL ANT_UnAssignChannel_RTO(UCHAR ucANTChannel, ULONG ulResponseTime_)
+BOOL ANT_UnAssignChannel_RTO(UCHAR ucANTChannel_, ULONG ulResponseTime_)
 {
 #if defined(DEBUG_FILE)
-    DSIDebug::ThreadPrintf("ANT_UnAssignChannel_RTO(ucANTChannel=%d)", ucANTChannel);
+    DSIDebug::ThreadPrintf("ANT_UnAssignChannel_RTO(ucANTChannel_=%d)", ucANTChannel_);
 #endif
-   if(ActionEnabled(ucANTChannel))
+   if(ActionEnabled(ucANTChannel_))
    {
-      return(pclMessageObject->UnAssignChannel(ucANTChannel, ulResponseTime_));
+      return(pclMessageObject->UnAssignChannel(ucANTChannel_, ulResponseTime_));
    }
-   return(FALSE);
+   return FALSE;
 }
 
 
@@ -708,7 +700,7 @@ BOOL ANT_SetChannelPeriod_RTO(UCHAR ucANTChannel_, USHORT usMesgPeriod_, ULONG u
    {
       return(pclMessageObject->SetChannelPeriod(ucANTChannel_, usMesgPeriod_, ulResponseTime_));
    }
-   return(FALSE);
+   return FALSE;
 
 }
 
@@ -938,7 +930,7 @@ BOOL ANT_RequestMessage(UCHAR ucANTChannel_, UCHAR ucMessageID_)
       ANT_MESSAGE_ITEM stResponse;
       return pclMessageObject->SendRequest(ucMessageID_, ucANTChannel_, &stResponse, 0);
    }
-   return FALSE;
+   return(FALSE);
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1707,9 +1699,9 @@ BOOL ANT_SendExtBroadcastData(UCHAR ucANTChannel_, UCHAR *pucData_)
 #if defined(DEBUG_FILE)
     DSIDebug::ThreadPrintf("ANT_SendExtBroadcastData(ucANTChannel_=%d)", ucANTChannel_);
 #endif
-   if(!pclMessageObject)
-      return FALSE;
-   return pclMessageObject->SendExtBroadcastData(ucANTChannel_, pucData_);
+    if (ActionEnabled(ucANTChannel_))
+       return pclMessageObject->SendExtBroadcastData(ucANTChannel_, pucData_);
+    return(FALSE);
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1734,10 +1726,9 @@ BOOL ANT_SendExtAcknowledgedData_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, ULONG
 #if defined(DEBUG_FILE)
     DSIDebug::ThreadPrintf("ANT_SendExtAcknowledgedData_RTO(ucANTChannel_=%d, ulResponseTime_=%d)", ucANTChannel_, ulResponseTime_);
 #endif
-   if(!pclMessageObject)
-      return FALSE;
-
-   return (ANTFRAMER_PASS == pclMessageObject->SendExtAcknowledgedData(ucANTChannel_, pucData_, ulResponseTime_));
+    if (ActionEnabled(ucANTChannel_))
+       return (ANTFRAMER_PASS == pclMessageObject->SendExtAcknowledgedData(ucANTChannel_, pucData_, ulResponseTime_));
+    return(FALSE);
 }
 
 
@@ -1793,10 +1784,9 @@ USHORT ANT_SendExtBurstTransfer_RTO(UCHAR ucANTChannel_, UCHAR *pucData_, USHORT
 #if defined(DEBUG_FILE)
     DSIDebug::ThreadPrintf("ANT_SendExtBurstTransfer_RTO(ucANTChannel_=%d, usDataPackets_=%d, ulResponseTime_=%d)", ucANTChannel_, usDataPackets_, ulResponseTime_);
 #endif
-   if(!pclMessageObject)
-      return FALSE;
-
-   return (ANTFRAMER_PASS == pclMessageObject->SendExtBurstTransfer(ucANTChannel_, pucData_, usDataPackets_*8, ulResponseTime_));
+    if (ActionEnabled(ucANTChannel_))
+       return (ANTFRAMER_PASS == pclMessageObject->SendExtBurstTransfer(ucANTChannel_, pucData_, usDataPackets_*8, ulResponseTime_));
+   return(FALSE);
 }
 
 
@@ -2230,7 +2220,7 @@ BOOL ANT_SetDebugLogDirectory(char* pcDirectory)
 #if defined(DEBUG_FILE)
    return DSIDebug::SetDirectory(pcDirectory);
 #else
-   return false;
+   return FALSE;
 #endif
 }
 
@@ -2306,19 +2296,19 @@ static void MemoryCleanup(void)
    }
 }
 
-typedef BOOL(*RESPONSE_FUNC)(UCHAR ucANTChannel, UCHAR ucResponseMsgID);
-void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
+typedef BOOL(*RESPONSE_FUNC)(UCHAR ucANTChannel_, UCHAR ucResponseMsgID);
+void CallResponseFunction(UCHAR ucANTChannel_, UCHAR ucResponseMsgID) {
 #ifdef ENABLE_EDGE_REMOTE
-    if (glbZWIFT_EDGE_REMOTE && ucANTChannel == 0) {
+    if (glbZWIFT_EDGE_REMOTE && ucANTChannel_ == 7) {
 #if defined(DEBUG_FILE)
-        DSIDebug::ThreadPrintf("CallResponseFunction(edge,glbEdgeRemoteBroadcasting=%d)(ucANTChannel=%d,ucResponseMsgID=%d)", glbEdgeRemoteBroadcasting, ucANTChannel, ucResponseMsgID);
+        DSIDebug::ThreadPrintf("CallResponseFunction(edge,glbEdgeRemoteBroadcasting=%d)(ucANTChannel_=%d,ucResponseMsgID=%d)", glbEdgeRemoteBroadcasting, ucANTChannel_, ucResponseMsgID);
 #endif
         switch (ucResponseMsgID) {
         case MESG_RESPONSE_EVENT_ID:
             switch (glbEdgeRemoteChannelRxBuffer[1/*MESSAGE_BUFFER_DATA2_INDEX*/]) {
             case MESG_CLOSE_CHANNEL_ID:
                 if (glbEdgeRemoteChannelRxBuffer[2/*MESSAGE_BUFFER_DATA3_INDEX*/] == CHANNEL_IN_WRONG_STATE) {
-                    ANT_UnAssignChannel(ucANTChannel);
+                    ANT_UnAssignChannel(ucANTChannel_);
                     break;
                 }
                 break;
@@ -2331,7 +2321,7 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
                     break;
                 }
                 glbEdgeRemoteBroadcasting = TRUE;
-                ANT_OpenChannel(ucANTChannel);
+                ANT_OpenChannel(ucANTChannel_);
                 break;
             case MESG_NETWORK_KEY_ID:
                 if (glbEdgeRemoteChannelRxBuffer[2/*MESSAGE_BUFFER_DATA3_INDEX*/] != RESPONSE_NO_ERROR) {
@@ -2341,7 +2331,7 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
                     break;
                 }
                 //if (ucChannelType == CHANNEL_TYPE_MASTER)                {
-                /*    bSuccess =*/ ANT_AssignChannel(ucANTChannel, PARAMETER_TX_NOT_RX, 0/*USER_NETWORK_NUM*/);
+                /*    bSuccess =*/ ANT_AssignChannel(ucANTChannel_, PARAMETER_TX_NOT_RX, 0/*USER_NETWORK_NUM*/);
                 //}
                 //else if (ucChannelType == CHANNEL_TYPE_SLAVE)                {
                 //    bSuccess = ANT_AssignChannel(USER_ANTCHANNEL, 0, USER_NETWORK_NUM);
@@ -2354,7 +2344,7 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
 #endif
                     break;
                 }
-                ANT_SetChannelId(ucANTChannel, USER_DEVICENUM, USER_DEVICETYPE, USER_TRANSTYPE);
+                ANT_SetChannelId(ucANTChannel_, USER_DEVICENUM, USER_DEVICETYPE, USER_TRANSTYPE);
                 break;
             case MESG_CHANNEL_ID_ID:
                 if (glbEdgeRemoteChannelRxBuffer[2/*MESSAGE_BUFFER_DATA3_INDEX*/] != RESPONSE_NO_ERROR) {
@@ -2363,7 +2353,7 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
 #endif
                     break;
                 }
-                ANT_SetChannelRFFreq(ucANTChannel, USER_RADIOFREQ);
+                ANT_SetChannelRFFreq(ucANTChannel_, USER_RADIOFREQ);
                 break;
             case MESG_OPEN_CHANNEL_ID:
                 if (glbEdgeRemoteChannelRxBuffer[2/*MESSAGE_BUFFER_DATA3_INDEX*/] != RESPONSE_NO_ERROR) {
@@ -2380,9 +2370,9 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
 #endif //ENABLE_EDGE_REMOTE
         if (pfResponseFunc) {
 #if defined(DEBUG_FILE)
-        DSIDebug::ThreadPrintf("pfResponseFunc(ucANTChannel=%d,ucResponseMsgID=%d)", ucANTChannel, ucResponseMsgID);
+        DSIDebug::ThreadPrintf("pfResponseFunc(ucANTChannel_=%d,ucResponseMsgID=%d)", ucANTChannel_, ucResponseMsgID);
 #endif
-            pfResponseFunc(ucANTChannel, ucResponseMsgID);
+            pfResponseFunc(ucANTChannel_, ucResponseMsgID);
             return;
         }
 #if defined(DEBUG_FILE)
@@ -2397,7 +2387,7 @@ void CallResponseFunction(UCHAR ucANTChannel, UCHAR ucResponseMsgID) {
 ///////////////////////////////////////////////////////////////////////
 static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
 {
-   UCHAR ucANTChannel;
+   UCHAR ucANTChannel_;
 
    //If no response function has been assigned, ignore the message and unlock
    //the receive buffer
@@ -2405,7 +2395,7 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
       return;
 
 
-   ucANTChannel = stMessage_.aucData[MESG_CHANNEL_OFFSET] & CHANNEL_NUMBER_MASK;
+   ucANTChannel_ = stMessage_.aucData[MESG_CHANNEL_OFFSET] & CHANNEL_NUMBER_MASK;
 
 
    //Process the message to determine whether it is a response event or one
@@ -2419,27 +2409,27 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
             if (pucResponseBuffer)
             {
                memcpy(pucResponseBuffer, stMessage_.aucData, MESG_RESPONSE_EVENT_SIZE);
-               CallResponseFunction(ucANTChannel, MESG_RESPONSE_EVENT_ID);
+               CallResponseFunction(ucANTChannel_, MESG_RESPONSE_EVENT_ID);
             }
          }
          else // this is an event
          {
             // If we are in auto transfer mode, stop sending packets
-            if ((stMessage_.aucData[MESG_EVENT_CODE_OFFSET] == EVENT_TRANSFER_TX_FAILED) && (ucAutoTransferChannel == ucANTChannel))
+            if ((stMessage_.aucData[MESG_EVENT_CODE_OFFSET] == EVENT_TRANSFER_TX_FAILED) && (ucAutoTransferChannel == ucANTChannel_))
                usNumDataPackets = 0;
 
-            if (sLink[ucANTChannel].pfLinkEvent == NULL)
+            if (sLink[ucANTChannel_].pfLinkEvent == NULL)
                break;
 
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, usSize_);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, stMessage_.aucData[MESG_EVENT_CODE_OFFSET]); // pass through any events not handled here
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, usSize_);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, stMessage_.aucData[MESG_EVENT_CODE_OFFSET]); // pass through any events not handled here
          }
          break;
       }
       case MESG_BROADCAST_DATA_ID:
       {
-         if (  sLink[ucANTChannel].pfLinkEvent == NULL ||
-               sLink[ucANTChannel].pucRxBuffer == NULL)
+         if (  sLink[ucANTChannel_].pfLinkEvent == NULL ||
+               sLink[ucANTChannel_].pucRxBuffer == NULL)
          {
             break;
          }
@@ -2449,14 +2439,14 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
          if(usSize_ > MESG_DATA_SIZE)
          {
             //Call channel event function with Broadcast message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, usSize_);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_FLAG_BROADCAST);                 // process the event
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, usSize_);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_FLAG_BROADCAST);                 // process the event
          }
          else
          {
             //Call channel event function with Broadcast message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_BROADCAST);                 // process the event
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_BROADCAST);                 // process the event
          }
          break;
 
@@ -2464,101 +2454,101 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
 
       case MESG_ACKNOWLEDGED_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
 
          if(usSize_ > MESG_DATA_SIZE)
          {
             //Call channel event function with Broadcast message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, usSize_);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_FLAG_ACKNOWLEDGED);                 // process the event
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, usSize_);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_FLAG_ACKNOWLEDGED);                 // process the event
          }
          else
          {
             //Call channel event function with Acknowledged message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_ACKNOWLEDGED);                 // process the message
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_ACKNOWLEDGED);                 // process the message
          }
          break;
       }
       case MESG_BURST_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          if(usSize_ > MESG_DATA_SIZE)
          {
             //Call channel event function with Broadcast message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, usSize_);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_FLAG_BURST_PACKET);                 // process the event
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, usSize_);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_FLAG_BURST_PACKET);                 // process the event
          }
          else
          {
             //Call channel event function with Burst message code
-            memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
-            sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_BURST_PACKET);                 // process the message
+            memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, ANT_STANDARD_DATA_PAYLOAD_SIZE + MESG_CHANNEL_NUM_SIZE);
+            sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_BURST_PACKET);                 // process the message
          }
          break;
       }
       case MESG_EXT_BROADCAST_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Broadcast message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_EXT_BROADCAST);                 // process the event
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_EXT_BROADCAST);                 // process the event
          break;
       }
       case MESG_EXT_ACKNOWLEDGED_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Acknowledged message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_EXT_ACKNOWLEDGED);              // process the message
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_EXT_ACKNOWLEDGED);              // process the message
          break;
       }
       case MESG_EXT_BURST_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Burst message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_EXT_BURST_PACKET);                 // process the message
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_EXT_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_EXT_BURST_PACKET);                 // process the message
          break;
       }
       case MESG_RSSI_BROADCAST_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Broadcast message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_RSSI_BROADCAST);                 // process the event
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_RSSI_BROADCAST);                 // process the event
          break;
       }
       case MESG_RSSI_ACKNOWLEDGED_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Acknowledged message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_RSSI_ACKNOWLEDGED);                 // process the message
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_RSSI_ACKNOWLEDGED);                 // process the message
          break;
       }
       case MESG_RSSI_BURST_DATA_ID:
       {
-         if (sLink[ucANTChannel].pfLinkEvent == NULL)
+         if (sLink[ucANTChannel_].pfLinkEvent == NULL)
             break;
 
          //Call channel event function with Burst message code
-         memcpy(sLink[ucANTChannel].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
-         sLink[ucANTChannel].pfLinkEvent(ucANTChannel, EVENT_RX_RSSI_BURST_PACKET);                 // process the message
+         memcpy(sLink[ucANTChannel_].pucRxBuffer, stMessage_.aucData, MESG_RSSI_DATA_SIZE);
+         sLink[ucANTChannel_].pfLinkEvent(ucANTChannel_, EVENT_RX_RSSI_BURST_PACKET);                 // process the message
          break;
       }
 
@@ -2568,7 +2558,7 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
          {
             memcpy(pucResponseBuffer, stMessage_.aucData, usSize_);
             pucResponseBuffer[10] = (UCHAR)usSize_;
-            CallResponseFunction(ucANTChannel, MESG_SCRIPT_DATA_ID);
+            CallResponseFunction(ucANTChannel_, MESG_SCRIPT_DATA_ID);
          }
          break;
       }
@@ -2577,7 +2567,7 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
          if (pucResponseBuffer)
          {
             memcpy(pucResponseBuffer, stMessage_.aucData, MESG_SCRIPT_CMD_SIZE);
-            CallResponseFunction(ucANTChannel, MESG_SCRIPT_CMD_ID);
+            CallResponseFunction(ucANTChannel_, MESG_SCRIPT_CMD_ID);
          }
          break;
       }
@@ -2586,7 +2576,7 @@ static void SerialHaveMessage(ANT_MESSAGE& stMessage_, USHORT usSize_)
          if (pucResponseBuffer)                     // can we process this link
          {
             memcpy(pucResponseBuffer, stMessage_.aucData, usSize_);
-            CallResponseFunction(ucANTChannel, stMessage_.ucMessageID );
+            CallResponseFunction(ucANTChannel_, stMessage_.ucMessageID );
          }
          break;
       }
