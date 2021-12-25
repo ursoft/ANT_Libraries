@@ -168,6 +168,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ant.cpp" />
+    <ClCompile Include="ble_proxy.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ant.h" />

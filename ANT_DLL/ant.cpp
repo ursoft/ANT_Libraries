@@ -94,6 +94,8 @@ BOOL ANT_Init(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType, UCHAR uc
 #ifdef ENABLE_EDGE_REMOTE
 int glbZWIFT_EDGE_REMOTE = 0; //need also environment variable "ZWIFT_EDGE_REMOTE=20_bit_edge_id"
 BOOL glbEdgeRemoteBroadcasting = 0;
+CHANNEL_EVENT_FUNC glbSteeringSimulatorEventFunc = NULL; //заготовка, т.к. пока что руление в Zwift через Ant+ не реализовано
+UCHAR *glbSteeringSimulatorRxBuf = NULL;
 #endif
 
 //Initializes and opens USB connection to the module
@@ -107,7 +109,9 @@ BOOL ANT_InitExt(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType_, UCHA
    assert(!bInitialized);         // IF ANT WAS ALREADY INITIALIZED, DO NOT CALL THIS FUNCTION BEFORE CALLING ANT_Close();
 
 
-   Sleep(5000);
+#ifdef _DEBUG
+   Sleep(5000); //attach debugger
+#endif
 #if defined(DEBUG_FILE)
    DSIDebug::Init();
    DSIDebug::SetDebug(TRUE);
@@ -294,8 +298,6 @@ void EmitZwiftKeyPress(WORD key) {
     }
 }
 
-
-
 static UCHAR glbEdgeRemoteChannelRxBuffer[/*MAX_CHANNEL_EVENT_SIZE*/ 41];
 BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel, UCHAR ucEvent) {
 #if defined(DEBUG_FILE)
@@ -417,6 +419,8 @@ void ANT_AssignChannelEventFunction(UCHAR ucLink, CHANNEL_EVENT_FUNC pfLinkEvent
     if (glbZWIFT_EDGE_REMOTE && ucLink == 0) { //забираем 0-й канал себе
       sLink[ucLink].pfLinkEvent = EdgeRemoteLinkEvent;
       sLink[ucLink].pucRxBuffer = glbEdgeRemoteChannelRxBuffer;
+      glbSteeringSimulatorEventFunc = pfLinkEvent;
+      glbSteeringSimulatorRxBuf = pucRxBuffer;
     } else
 #endif
    if(ucLink < MAX_CHANNELS)
@@ -540,7 +544,7 @@ BOOL ANT_AssignChannel_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR ucNet
 #if defined(DEBUG_FILE)
     DSIDebug::ThreadPrintf("ANT_AssignChannel_RTO(UCHAR ucANTChannel=%d, UCHAR ucChannelType_=%d, UCHAR ucNetNumber=%d, ULONG ulResponseTime_=%d)", ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_);
 #endif
-   if(ActionEnabled(ucANTChannel))
+   if(ActionEnabled(ucANTChannel) || ucNetNumber != 0)
    {
        return(pclMessageObject->AssignChannel(ucANTChannel, ucChannelType_, ucNetNumber, ulResponseTime_));
    }
@@ -601,7 +605,7 @@ BOOL ANT_AssignChannelExt_RTO(UCHAR ucANTChannel, UCHAR ucChannelType_, UCHAR uc
 #endif
    }
 #endif
-   if(ActionEnabled(ucANTChannel))
+   if(ActionEnabled(ucANTChannel) || ucNetNumber != 0)
    {
       UCHAR aucChannelType[] = {ucChannelType_, ucExtFlags_};  // Channel Type + Extended Assignment Byte
 

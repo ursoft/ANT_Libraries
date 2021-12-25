@@ -18,6 +18,9 @@
     <ClCompile Include="ant.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ble_proxy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ant.h">
