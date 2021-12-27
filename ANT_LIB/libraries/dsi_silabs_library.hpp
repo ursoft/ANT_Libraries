@@ -45,10 +45,11 @@ struct SiLabsError
 //NOTE: Not thread-safe.
 class SiLabsLibrary
 {
+   SiLabsLibrary(HMODULE hLibHandle_); //throw(SiLabsError::Enum)
   public:
                                                    //!!Is this guaranteed to never be a global variable?  If so, then we can return the static instance instead of creating a new one.
                                                                   //!!maybe return another smart pointer like shared_ptr?
-   static BOOL Load(std::auto_ptr<const SiLabsLibrary>& clAutoLibrary_);  //!! Alternative to creating directly and having to worry about try statements
+   static SiLabsLibrary *Load();  //!! Alternative to creating directly and having to worry about try statements
                                                             /* Otherwise you'd have to do this...
                                                             //Get a reference to library
                                                             auto_ptr<SiLabsLibrary> pclAutoSiLibrary(NULL);
@@ -58,7 +59,6 @@ class SiLabsLibrary
                                                             */
 
 
-   SiLabsLibrary(); //throw(SiLabsError::Enum)
    virtual ~SiLabsLibrary() throw();
 
    // Prototypes for USB functions found in the SI dll.
@@ -97,13 +97,7 @@ class SiLabsLibrary
    SiLabsError::Enum LoadFunctions();
    void FreeFunctions();
 
-   static std::auto_ptr<SiLabsLibrary> clAutoInstance;  //keeps the library loaded for the duration of the application
-                                                               //NOTE: There is no control when this gets destroyed at end of program
-                                                               //       but it doesn't matter because it's main purpose is to keep the library loaded
-                                                               //       during the duration of the whole application.
-
    HMODULE hLibHandle;
-   static BOOL bStaticSet;
 
    //!!Could dynamically make all instances and push them onto a static list to delete when we get to it
 };

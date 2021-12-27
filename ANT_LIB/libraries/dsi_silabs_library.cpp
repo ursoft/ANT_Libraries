@@ -17,28 +17,27 @@ using namespace std;
 
 #define LIBRARY_NAME    "DSI_SiUSBXp_3_1.DLL"
 
-//Static variable initializations
-std::auto_ptr<SiLabsLibrary> SiLabsLibrary::clAutoInstance(NULL);
-BOOL SiLabsLibrary::bStaticSet = FALSE;
-
                                                                      //return an auto_ptr?
-BOOL SiLabsLibrary::Load(auto_ptr<const SiLabsLibrary>& clAutoLibrary_)  //!!Should we lose the dependency on auto_ptr and just return the pointer (and let the user make their own auto_ptr)?
+SiLabsLibrary *SiLabsLibrary::Load()  //!!Should we lose the dependency on auto_ptr and just return the pointer (and let the user make their own auto_ptr)?
 {
-   try
-   {
-      clAutoLibrary_.reset(new SiLabsLibrary());
-   }
-   catch(...)
-   {
-      clAutoLibrary_.reset(NULL);
-      return FALSE;
-   }
+   HMODULE hLibHandle_ = LoadLibrary(LIBRARY_NAME);
+   if (hLibHandle_ == NULL)
+       return NULL;
 
-   return TRUE;
+   static std::auto_ptr<SiLabsLibrary> clAutoInstance(new SiLabsLibrary(hLibHandle_));
+   if(clAutoInstance->Open == NULL) try {
+        SiLabsError::Enum ret = clAutoInstance->LoadFunctions();
+        if (ret != SiLabsError::NONE)
+            throw ret;
+    } catch (...) {
+        clAutoInstance.reset(NULL);
+    }
+
+   return clAutoInstance.get();
 }
 
 
-SiLabsLibrary::SiLabsLibrary() //throw(SiLabsError::Enum&)
+SiLabsLibrary::SiLabsLibrary(HMODULE hLibHandle_) //throw(SiLabsError::Enum&)
 :
    Open(NULL),
    GetNumDevices(NULL),
@@ -53,30 +52,8 @@ SiLabsLibrary::SiLabsLibrary() //throw(SiLabsError::Enum&)
    SetLineControl(NULL),
    SetFlowControl(NULL),
    GetProductString(NULL),
-
-   hLibHandle(NULL)
+   hLibHandle(hLibHandle_)
 {
-   //Check static instance
-   if(bStaticSet == FALSE)
-   {
-      bStaticSet = TRUE;
-      try
-      {
-         clAutoInstance.reset(new SiLabsLibrary());
-      }
-      catch(...)
-      {
-         bStaticSet = FALSE;
-         throw;
-      }
-   }
-
-   //load library
-   SiLabsError::Enum ret = LoadFunctions();
-   if(ret != SiLabsError::NONE)
-      throw(ret);
-
-   return;
 }
 
 SiLabsLibrary::~SiLabsLibrary() throw()
@@ -90,7 +67,6 @@ SiLabsLibrary::~SiLabsLibrary() throw()
 ///////////////////////////////////////////////////////////////////////
 SiLabsError::Enum SiLabsLibrary::LoadFunctions()
 {
-   hLibHandle = LoadLibrary(LIBRARY_NAME);
    if(hLibHandle == NULL)
       return SiLabsError::NO_LIBRARY;
 

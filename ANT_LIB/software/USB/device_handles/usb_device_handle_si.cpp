@@ -71,8 +71,8 @@ const USBDeviceListSI USBDeviceHandleSI::GetAllDevices()
    clDeviceList = USBDeviceList<const USBDeviceSI>();  //clear device list
 
    //Get a reference to library
-   auto_ptr<const SiLabsLibrary> pclAutoSiLibrary(NULL);
-   if(SiLabsLibrary::Load(pclAutoSiLibrary) == FALSE)
+   SiLabsLibrary *pclAutoSiLibrary = SiLabsLibrary::Load();
+   if(pclAutoSiLibrary == NULL)
       return clList;
    const SiLabsLibrary& clSiLibrary = *pclAutoSiLibrary;
 
@@ -211,9 +211,9 @@ UCHAR USBDeviceHandleSI::GetNumberOfDevices()  //!!Should this be in USBDeviceSI
 {
 
    //Get a reference to library
-   auto_ptr<const SiLabsLibrary> pclAutoSiLibrary(NULL);
-   if(SiLabsLibrary::Load(pclAutoSiLibrary) == FALSE)
-      return 0;
+    SiLabsLibrary *pclAutoSiLibrary = SiLabsLibrary::Load();
+    if (pclAutoSiLibrary == NULL)
+        return 0;
 
    ULONG ulUSBNumberOfDevices;
    if(pclAutoSiLibrary->GetNumDevices(&ulUSBNumberOfDevices) != SI_SUCCESS)
@@ -263,10 +263,10 @@ USBError::Enum USBDeviceHandleSI::GetDevicePID(USHORT& usPID_)  //!!Don't need t
 BOOL USBDeviceHandleSI::TryOpen(const USBDeviceSI& clDevice_)
 {
    //Get a reference to library
-   auto_ptr<const SiLabsLibrary> pclAutoSiLibrary(NULL);
-   if(SiLabsLibrary::Load(pclAutoSiLibrary) == FALSE)
-      return 0;
-   const SiLabsLibrary& clSiLibrary = *pclAutoSiLibrary;
+    SiLabsLibrary *pclAutoSiLibrary = SiLabsLibrary::Load();
+    if (pclAutoSiLibrary == NULL)
+        return FALSE;
+    const SiLabsLibrary& clSiLibrary = *pclAutoSiLibrary;
 
    HANDLE hTempHandle;
    if(clSiLibrary.Open(clDevice_.GetDeviceNumber(), &hTempHandle) != SI_SUCCESS)
@@ -309,6 +309,10 @@ BOOL USBDeviceHandleSI::POpen()
    // Make sure all handles are reset before opening again.
    PClose();
 
+   SiLabsLibrary* pclAutoSiLibrary = SiLabsLibrary::Load();
+   if (pclAutoSiLibrary == NULL)
+       return FALSE;
+   const SiLabsLibrary& clSiLibrary = *pclAutoSiLibrary;
    if(clSiLibrary.Open(clDevice.GetDeviceNumber(), &hUSBDeviceHandle) != SI_SUCCESS)
    {
       PClose();
@@ -454,6 +458,10 @@ void USBDeviceHandleSI::PClose(BOOL bReset_)
       ucDSRCode = SI_STATUS_INPUT;
       ucDCDCode = SI_STATUS_INPUT;
 
+      SiLabsLibrary* pclAutoSiLibrary = SiLabsLibrary::Load();
+      if (pclAutoSiLibrary == NULL)
+          return;
+      const SiLabsLibrary& clSiLibrary = *pclAutoSiLibrary;
       eStatus = clSiLibrary.SetFlowControl(hUSBDeviceHandle, ucCTSCode, ucRTSCode, ucDTRCode, ucDSRCode, ucDCDCode, FALSE);
 
       if (eStatus != SI_INVALID_HANDLE)
@@ -486,8 +494,10 @@ USBError::Enum USBDeviceHandleSI::Write(void* pvData_, ULONG ulSize_, ULONG& ulB
       return USBError::INVALID_PARAM;
 
    //!!is there a max message size that we should test for?
-
-   if(clSiLibrary.Write(hUSBDeviceHandle, pvData_, ulSize_, (LPDWORD)&ulBytesWritten_, (OVERLAPPED*)NULL) != SI_SUCCESS)
+   SiLabsLibrary* pclAutoSiLibrary = SiLabsLibrary::Load();
+   if (pclAutoSiLibrary == NULL)
+       return USBError::FAILED;
+   if(pclAutoSiLibrary->Write(hUSBDeviceHandle, pvData_, ulSize_, (LPDWORD)&ulBytesWritten_, (OVERLAPPED*)NULL) != SI_SUCCESS)
       return USBError::FAILED;
 
    if(ulBytesWritten_ != ulSize_)
@@ -660,7 +670,8 @@ void USBDeviceHandleSI::ReceiveThread()
 
       ULONG ulRxBytesRead;
       UCHAR ucRxByte;
-      SI_STATUS eStatus = clSiLibrary.Read(hUSBDeviceHandle, &ucRxByte, 1, &ulRxBytesRead, &stOverlapped);
+      SiLabsLibrary* pclAutoSiLibrary = SiLabsLibrary::Load();
+      SI_STATUS eStatus = (pclAutoSiLibrary == NULL) ? SI_INVALID_HANDLE : pclAutoSiLibrary->Read(hUSBDeviceHandle, &ucRxByte, 1, &ulRxBytesRead, &stOverlapped);
 
       switch (eStatus)
       {

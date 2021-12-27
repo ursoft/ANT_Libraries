@@ -19,7 +19,7 @@ All rights reserved.
  **************************************************************************
  */
 
-
+#define  _CRT_SECURE_NO_WARNINGS
 #include <string.h>  // memcpy
 #include <stdio.h>
 #include <assert.h>
@@ -274,6 +274,7 @@ bool IsExtendedKey(DWORD key) {
     case VK_DIVIDE:
         return true;
     }
+    return false;
 }
 void EmitZwiftKeyPress(WORD key) {
     static HWND zwiftWindow = NULL;

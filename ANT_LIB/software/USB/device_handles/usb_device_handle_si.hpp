@@ -43,8 +43,6 @@ class USBDeviceHandleSI : public USBDeviceHandle
 {
    private:
 
-      // Dynamic Libraries
-      SiLabsLibrary clSiLibrary;
       CMLibrary clCmLibrary;
 
       TSQueue<char> clRxQueue;
