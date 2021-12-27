@@ -47,8 +47,6 @@ All rights reserved.
 #define MESG_EVENT_ID_OFFSET                 1
 #define MESG_EVENT_CODE_OFFSET               2
 
-#define ENABLE_EDGE_REMOTE //need also environment variable "ZWIFT_EDGE_REMOTE=20_bit_edge_id"
-
 // Struct to define channel event callback functions
 // and recieve buffer.
 typedef struct
@@ -351,6 +349,9 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
                         49-0D-56-01-00-14-01-00 - quick screen press (menu down = 1 dec).
                         49-0D-56-01-00-14-00-00 - long screen press (menu up = 0 dec). Можно зажать, будет повторяться периодически.
                 */
+                extern HANDLE glbWakeSteeringThread;
+                extern float glbSteeringTask;
+
                 switch (glbEdgeRemoteChannelRxBuffer[ucDataOffset + 6] + 256 * glbEdgeRemoteChannelRxBuffer[ucDataOffset + 7]) {
                 case 0:
 #if defined(DEBUG_FILE)
@@ -362,12 +363,16 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
 #if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Screen: quick press");
 #endif
+                    if (glbSteeringTask < 70) glbSteeringTask += 30;
+                    SetEvent(glbWakeSteeringThread);
                     EmitZwiftKeyPress(VK_RIGHT);
                     break;
                 case 32768:
 #if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Blue: quick press");
 #endif
+                    if (glbSteeringTask > -70) glbSteeringTask -= 30;
+                    SetEvent(glbWakeSteeringThread);
                     EmitZwiftKeyPress(VK_LEFT);
                     break;
                 case 32769:

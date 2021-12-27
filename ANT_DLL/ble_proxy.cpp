@@ -1,6 +1,10 @@
 #include <Windows.h>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <thread>
+#include <cmath>
+#include "defines.h"
 
 HMODULE org = LoadLibraryA("BleWin10Lib.org.dll");
 typedef bool (*fptr_bool_ptr)(void *);
@@ -8,6 +12,29 @@ typedef bool (*fptr_bool_ptr3)(void *, void *, void *);
 typedef void (*fptr_void_ptr)(void *);
 typedef void (*fptr_void_void)();
 
+std::unique_ptr<std::thread> glbSteeringThread;
+HANDLE glbWakeSteeringThread = INVALID_HANDLE_VALUE;
+float glbSteeringTask = 0.0, glbSteeringCurrent = 0.0;
+bool glbTerminate = false;
+
+bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
+{
+    switch (fdwReason)     {
+    case DLL_PROCESS_ATTACH:
+        break;
+    case DLL_PROCESS_DETACH:
+        glbTerminate = true;
+        ::SetEvent(glbWakeSteeringThread);
+        if(glbSteeringThread.get())
+            glbSteeringThread->join();
+        break;
+    case DLL_THREAD_ATTACH:
+        break;
+    case DLL_THREAD_DETACH:
+        break;
+    }
+    return true;
+}
 extern "C" {
     fptr_void_ptr orgProcessBLEResponse = nullptr;
     void* newCadenceData() {
@@ -82,7 +109,7 @@ extern "C" {
         chars[0x10] = 6; chars[0x18] = 15;
         char *char_value = new char[4];
         char_value[0] = char_value[1] = char_value[3] = 0;
-        char_value[2] = 27 + GetTickCount() % 100;
+        char_value[2] = char(byte(200 + GetTickCount() % 50));
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 4;
         /*chars += 0x30;
@@ -136,6 +163,18 @@ extern "C" {
         bptr += sprintf(bptr, "\n");
         OutputDebugStringA(buf);
     }
+    float CalcNewSteer() {
+        if (glbSteeringTask == 0.0) {
+            if (glbSteeringCurrent > 0.0)
+                glbSteeringCurrent -= min(10, glbSteeringCurrent);
+            else
+                glbSteeringCurrent += min(10, -glbSteeringCurrent);
+        } else {
+            glbSteeringCurrent = glbSteeringTask;
+            glbSteeringTask = 0;
+        }
+        return glbSteeringCurrent;
+    }
     void* newSteeringData() {
         char* data = new char[0x68];
         memset(data, 0, 0x68);
@@ -164,9 +203,7 @@ extern "C" {
         memcpy(charLong, "347b0030-7635-408b-8918-8ff3949ce592", 37); //angle
         chars[0x10] = 36; chars[0x18] = 36;
         char *char_value = new char[4];
-        float steer = 0.0;
-        if (GetKeyState(VK_LEFT) & 0xF000) steer = -100;
-        if (GetKeyState(VK_RIGHT) & 0xF000) steer = 100;
+        float steer = CalcNewSteer();
         memcpy(char_value, &steer, 4);
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 4;
@@ -216,10 +253,49 @@ extern "C" {
             data = newCadenceData();
             DumpBLEResponse(data);
             orgProcessBLEResponse(data);
-            data = newSteeringData();
-            DumpBLEResponse(data);
-            orgProcessBLEResponse(data);
+            //data = newSteeringData();
+            //DumpBLEResponse(data);
+            //orgProcessBLEResponse(data);
         }
+    }
+    void ExecuteSteeringThread() {
+        int counter = 0, counterMax = 20;
+        OutputDebugString("Enter ExecuteSteeringThread");
+        do {
+            switch (WaitForSingleObject(glbWakeSteeringThread, 50)) {
+            case WAIT_TIMEOUT: { //ничего не происходит
+                    bool left = (GetKeyState(VK_LEFT) & 0xF000), right = (GetKeyState(VK_RIGHT) & 0xF000);
+                    ++counter;
+                    if (counter > counterMax || left || right) {
+                        if (left && glbSteeringTask > -100) glbSteeringTask -= 10;
+                        if (right && glbSteeringTask < 100) glbSteeringTask += 10;
+                        counter = 0;
+                    }
+                    else {
+                        continue;
+                    }
+                }
+                break;
+            default: 
+                OutputDebugString("ExecuteSteeringThread. Failed wait and exit");
+                return; //сбой в системе, уходим
+            case WAIT_OBJECT_0: //разбудили - для выхода или работы?
+                if (glbTerminate) {
+                    OutputDebugString("ExecuteSteeringThread. Wake for exit");
+                    return;
+                }
+                break;
+                counterMax = 2;
+            }
+            if (orgProcessBLEResponse) {
+                void* data = newSteeringData();
+                if (!glbTerminate) DumpBLEResponse(data);
+                if (!glbTerminate) orgProcessBLEResponse(data);
+                if (glbSteeringTask == 0.0 && glbSteeringCurrent == 0.0)
+                    counterMax = 20;
+            }
+        } while (!glbTerminate);
+        OutputDebugString("Exit ExecuteSteeringThread");
     }
 
     __declspec(dllexport) bool BLEPairToDevice(void *a1) {
@@ -228,7 +304,14 @@ extern "C" {
     }
     __declspec(dllexport) void BLEInitBLEFlags() {
         static fptr_void_void real = (fptr_void_void)GetProcAddress(org, "BLEInitBLEFlags");
-        return real();
+        real();
+#ifdef ENABLE_EDGE_REMOTE
+        const char* edge_id_str = getenv("ZWIFT_EDGE_REMOTE");
+        if (edge_id_str && *edge_id_str) {
+            glbWakeSteeringThread = ::CreateEvent(NULL, false, false, NULL);
+            glbSteeringThread.reset(new std::thread(ExecuteSteeringThread));
+        }
+#endif
     }
     __declspec(dllexport) void BLEPurgeDeviceList() {
         static fptr_void_void real = (fptr_void_void)GetProcAddress(org, "BLEPurgeDeviceList");

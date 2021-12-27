@@ -10,6 +10,7 @@ All rights reserved.
 #define DSI_DEFINES_H
 
 #include "types.h"
+#define ENABLE_EDGE_REMOTE //need also environment variable "ZWIFT_EDGE_REMOTE=20_bit_edge_id"
 
 
 //////////////////////////////////////////////////////////////////////////////////
