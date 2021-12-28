@@ -1045,6 +1045,7 @@ ANTFS_RETURN ANTFSClientChannel::SendDownloadResponse(UCHAR ucResponse_, ANTFS_D
 ///////////////////////////////////////////////////////////////////////
 ANTFS_RETURN ANTFSClientChannel::SendUploadResponse(UCHAR ucResponse_, ANTFS_UPLOAD_PARAMS* pstUploadInfo_, ULONG ulDataLength_, void *pvData_)
 {
+    (void)ulDataLength_; (void)pvData_;
    //TODO: Implement this method fully. Will use ulDataLength_, pvData_ which are unreferenced right now.
    DSIThread_MutexLock(&stMutexCriticalSection);
 

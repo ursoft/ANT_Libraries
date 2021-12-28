@@ -5700,7 +5700,7 @@ void ANTFSHostChannel::HandleSerialError(void)
    // Most likely, ANT was in the wrong state, so attempt to close the channel.
    // No errors raised from here, as we do not know what state we are in.
 
-   UCHAR ucChannelStatus = 0;
+   //UCHAR ucChannelStatus = 0;
 
    if(pclANT->CloseChannel(ucChannelNumber, ANT_CLOSE_TIMEOUT) != TRUE)
    {

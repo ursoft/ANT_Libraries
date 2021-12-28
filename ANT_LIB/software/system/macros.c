@@ -42,7 +42,7 @@ size_t VSNPRINTF(char* pcDst_, size_t uNum_, const char* pcFormat_, va_list args
     int iWritten;
 
     if(uNum_ == 0)
-       return -1;
+       return (size_t)-1;
 
     iWritten = vsnprintf_s(pcDst_, uNum_, _TRUNCATE, pcFormat_, args);
 

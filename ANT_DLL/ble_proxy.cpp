@@ -1,10 +1,15 @@
+#include "defines.h"
 #include <Windows.h>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <thread>
 #include <cmath>
-#include "defines.h"
+#include <sysinfoapi.h>
+
+const char *SCHWINN_SERV = "3bf58980-3a2f-11e6-9011-0002a5d5c51b";
+const char *SCHWINN_CHAR = "5c7d82a0-9803-11e3-8a6c-0002a5d5c51b";
+const char *SCHWINN_SHORT_CHAR = "0x5c7d82a0";
 
 HMODULE org = LoadLibraryA("BleWin10Lib.org.dll");
 typedef bool (*fptr_bool_ptr)(void *);
@@ -16,6 +21,56 @@ std::unique_ptr<std::thread> glbSteeringThread;
 HANDLE glbWakeSteeringThread = INVALID_HANDLE_VALUE;
 float glbSteeringTask = 0.0, glbSteeringCurrent = 0.0;
 bool glbTerminate = false;
+
+bool equalUuids(const char* ext, const char* known) {
+    if (ext == NULL || *ext == 0) return false;
+    if (*ext == '{') ext++;
+    return _memicmp(ext, known, 36) == 0;
+}
+struct cadenceCalculator {
+    int64_t mCadTimes[600]; //currentTimeMillis
+    int mCadRotations[600];
+    int mCadPointer = -1;
+    byte mLastCadLowbyte = 0;
+    void updateCadence(int cadRotations)
+    {
+        mCadPointer++;
+        int cadPointer = mCadPointer % 600;
+        mCadTimes[cadPointer] = mLastRxTime;
+        if (mCadTimes[cadPointer] == 0) mCadTimes[cadPointer] = 1;
+        mCadRotations[cadPointer] = cadRotations;
+    }
+    int64_t mLastCalcCadTime = 0;
+    int mLastCalcCad = 0;
+    int64_t mLastRxTime = 0;
+
+    int currentCadence()
+    {
+        int64_t t = GetTickCount64();
+        if (t - mLastCalcCadTime < 1000 && mLastCalcCad != 0)
+            return mLastCalcCad;
+        if (t - mLastRxTime > 5000)
+            return 0;
+        int cadPointer = mCadPointer;
+        int maxRot = mCadRotations[cadPointer % 600];
+        int minRot = maxRot;
+        int64_t timeDuration = 0;
+        while (timeDuration < 60000)             {
+            cadPointer--;
+            if (cadPointer < 0) cadPointer += 600;
+            int64_t tryTime = mCadTimes[cadPointer % 600];
+            if (tryTime == 0 || t - tryTime > 61000) break;
+            timeDuration = t - tryTime;
+            minRot = mCadRotations[cadPointer % 600];
+            if (maxRot < minRot) maxRot += 0x1000000;
+            if (timeDuration > 15000 && maxRot - minRot > 20) break;
+        }
+        if (timeDuration == 0) mLastCalcCad = 0;
+        else mLastCalcCad = (int)((60000.0 / timeDuration) * (maxRot - minRot) + 0.5);
+        mLastCalcCadTime = t;
+        return mLastCalcCad;
+    }
+};
 
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
 {
@@ -138,7 +193,13 @@ extern "C" {
         while (service < end_service) {
             char len = service[16];
             if (len > 16) {
-                bptr += sprintf(bptr, "serv: %s\n", *(char**)service);
+                char* longServ = *(char**)service;
+                if (equalUuids(longServ, SCHWINN_SERV)) {
+                    memcpy(longServ, "0x1818", 7);
+                    service[16] = 6;
+                    //byteData[0] = 2;
+                }
+                bptr += sprintf(bptr, "serv: %s\n", longServ);
             }
             else {
                 bptr += sprintf(bptr, "serv: %s\n", service);
@@ -146,16 +207,117 @@ extern "C" {
             char* charact = *(char**)(service + 0x20), * end_charact = *(char**)(service + 0x28);
             while (charact < end_charact) {
                 len = charact[16];
+                bool needConversion = false;
                 if (len > 16) {
-                    bptr += sprintf(bptr, "charact: %s ", *(char**)charact);
+                    char* longChar = *(char**)charact;
+                    if (equalUuids(longChar, SCHWINN_CHAR)) {
+                        memcpy(longChar, "0x2a63", 7);
+                        charact[16] = 6;
+                        /*char *real_charact_val = *(char**)(charact + 0x20);
+                        if (!real_charact_val) {
+                            char* pushing_const_val = new char[4];
+                            pushing_const_val[0] = pushing_const_val[1] = pushing_const_val[3] = 0;
+                            pushing_const_val[2] = 6; // чтобы отличить
+                            *(void**)(charact + 0x20) = pushing_const_val;
+                            charact[0x28] = 4;
+                        } else {
+                            needConversion = true;
+                        }*/
+                    }
+                    bptr += sprintf(bptr, "charact: %s ", longChar);
                 }
                 else {
                     bptr += sprintf(bptr, "charact: %s ", charact);
+                    if (_memicmp(charact, SCHWINN_SHORT_CHAR, 10) == 0) {
+                        memcpy(charact, "0x2a63", 7);
+                        len = 6;
+                        charact[16] = len;
+                        needConversion = true;
+                    }
                 }
                 char* charact_val = *(char**)(charact + 0x20);
                 int charact_len = charact[0x28];
                 for (int i = 0; i < charact_len; i++)
                     bptr += sprintf(bptr, "%02X ", (int)(unsigned char)charact_val[i]);
+                if (needConversion && charact_len == 0x11 && charact_val[0] == 0x11 && charact_val[1] == 0x20) { //11 20 00 80 10 00 00 80 9C 21 F7 40 05 00 00 00 04 
+                    bptr += sprintf(bptr, "-> ");
+                    /*
+            if (_cadence.Characteristic.SubscribedClients.Count() > 0 && mLastCadLowbyte != data[4])
+            {
+                mLastCadLowbyte = data[4];
+                byte[] value = { 2,   //flags
+                    data[4], data[5], //crank revolution #
+                    data[8], data[9]  //time
+                };
+                _cadence.Value = ToIBuffer(value);
+                _cadence.NotifyValue();
+            }
+        }
+                    */
+                    charact_len = 4;
+                    charact[0x28] = charact_len;
+#if 0
+                    charact_val[0] = charact_val[1] = charact_val[3] = 0;
+                    charact_val[2] = 7; // чтобы отличить
+#else
+                    static int64_t mLastCalories = 0;
+                    static int mLastTime = 0; //в 1024-х долях секунды
+                    static double mLastPower = -1.0;
+                    static cadenceCalculator cadence;
+                    byte *data = (byte*)charact_val;
+                    cadence.mLastRxTime = GetTickCount64();
+                    cadence.updateCadence((data[4] & 0xFF) | ((data[5] & 0xFF) << 8) | ((data[6] & 0xFF) << 16));
+                    int64_t calories = data[10] | (data[11] << 8) | (data[12] << 16) | (data[13] << 24) | ((int64_t)data[14] << 32) | (int64_t(data[15] & 0x7F) << 40);
+                    int tim = data[8] | (data[9] << 8);
+                    if (mLastCalories == 0 || tim == mLastTime) {
+                        mLastCalories = calories;
+                        mLastTime = tim;
+                    } else {
+                        int64_t dcalories = calories - mLastCalories;
+                        mLastCalories = calories;
+                        int dtime = tim - mLastTime;
+                        mLastTime = tim;
+                        if (dtime < 0) dtime += 65536;
+
+                        int em_idx = (int)data[16] - 1;
+                        if (em_idx < 0) em_idx = 0;
+                        if (em_idx > 24) em_idx = 24;
+                        //коэффициент нелинейности нагрузки 1-25 Schwinn
+                        static const double extra_mult[] = { 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, //1-10
+                            0.60, 0.60, 0.60, //11-13
+                            0.75, 0.91, 1.07, //14-16
+                            1.23, 1.39, 1.55, //17-19
+                            1.72, 1.88, 2.04, //20-22
+                            2.20, 2.36, 2.52  //23-25
+                        };
+                        double mult = 0.42 * extra_mult[em_idx];
+                        double power = (double)dcalories / (double)dtime * mult;
+                        if (mLastPower == -1.0 || fabs(mLastPower - power) < 100.0)
+                            mLastPower = power;
+                        else
+                            mLastPower += (power - mLastPower) / 2.0;
+                        if (mLastPower < 0)
+                            mLastPower = 1;
+                        // flags
+                        // 00000001 - 1   - 0x001 - Pedal Power Balance Present
+                        // 00000010 - 2   - 0x002 - Pedal Power Balance Reference
+                        // 00000100 - 4   - 0x004 - Accumulated Torque Present
+                        // 00001000 - 8   - 0x008 - Accumulated Torque Source
+                        // 00010000 - 16  - 0x010 - Wheel Revolution Data Present
+                        // 00100000 - 32  - 0x020 - Crank Revolution Data Present
+                        // 01000000 - 64  - 0x040 - Extreme Force Magnitudes Present
+                        // 10000000 - 128 - 0x080 - Extreme Torque Magnitudes Present
+                        int pwr = (int)(mLastPower + 0.5);
+                        charact_val[0] = charact_val[1] = 0;
+                        charact_val[2] = (byte)(pwr & 0xFF);
+                        charact_val[3] = (byte)((pwr >> 8) & 0xFF);
+                        //Debug.WriteLine($"Time: {(int)(tim / 1024)}s, {(int)mLastPower}W, {calories >> 8}c, mult={mult}, {currentCadence()}rpm");
+#endif
+                    }
+
+                    for (int i = 0; i < charact_len; i++)
+                        bptr += sprintf(bptr, " %02X ", (int)(unsigned char)charact_val[i]);
+                }
                 charact += 0x30;
             }
             service += 0x38;
@@ -245,14 +407,14 @@ extern "C" {
     }
     void ProcessBLEResponse(void* data) {
         if (orgProcessBLEResponse) {
-            orgProcessBLEResponse(data);
-            DumpBLEResponse(data);
-            data = newPowerData();
             DumpBLEResponse(data);
             orgProcessBLEResponse(data);
-            data = newCadenceData();
+            /*data = newPowerData();
             DumpBLEResponse(data);
-            orgProcessBLEResponse(data);
+            orgProcessBLEResponse(data);*/
+            /*data = newCadenceData();
+            DumpBLEResponse(data);
+            orgProcessBLEResponse(data);*/
             //data = newSteeringData();
             //DumpBLEResponse(data);
             //orgProcessBLEResponse(data);
@@ -298,6 +460,14 @@ extern "C" {
         OutputDebugString("Exit ExecuteSteeringThread");
     }
 
+    /*fptr_void_ptr orgOnPairCB = nullptr;
+    void OnPairCB(void* data) {
+        if (orgOnPairCB) {
+            OutputDebugString("OnPairCB\n");
+            orgOnPairCB(data);
+        }
+    }*/
+
     __declspec(dllexport) bool BLEPairToDevice(void *a1) {
         static fptr_bool_ptr real = (fptr_bool_ptr)GetProcAddress(org, "BLEPairToDevice");
         return real(a1);
@@ -339,6 +509,8 @@ extern "C" {
     }
     __declspec(dllexport) void BLESetOnPairCB(void *a1) {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetOnPairCB");
+        //orgOnPairCB = (fptr_void_ptr)a1;
+        //a1 = OnPairCB;
         return real(a1);
     }
     __declspec(dllexport) void BLESetPeripheralDiscoveryFunc(void *a1) {
@@ -353,6 +525,24 @@ extern "C" {
     }
     __declspec(dllexport) void BLEStartScanning(void *a1) {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLEStartScanning");
+        char* from = (char*)*(void**)a1;
+        char* to = (char*)*((char**)a1+1);
+        while (from < to) {
+            char serv_length = from[0x10];
+            if (serv_length <= 15 && memcmp(from, "0x1814", 7) == 0) { // беговую дорожку заменим на Schwinn
+                char* schwinn_serv = new char[37];
+                memcpy(schwinn_serv, SCHWINN_SERV, 37);
+                memcpy(from, &schwinn_serv, 8);
+                from[0x10] = 36; from[0x18] = 36;
+                char* schwinn_char = new char[37]; //память не хочет освобождаться
+                memcpy(schwinn_char, SCHWINN_CHAR, 37);
+                from = (char*)*((char**)from + 4);
+                memcpy(from, &schwinn_char, 8);
+                from[0x10] = 36; from[0x18] = 36;
+                break;
+            }
+            from += 0x38;
+        }
         return real(a1);
     }
     __declspec(dllexport) void BLEStopScanning() {

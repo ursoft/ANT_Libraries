@@ -19,7 +19,7 @@ All rights reserved.
  **************************************************************************
  */
 
-#define  _CRT_SECURE_NO_WARNINGS
+#include "defines.h"
 #include <string.h>  // memcpy
 #include <stdio.h>
 #include <assert.h>
@@ -27,7 +27,6 @@ All rights reserved.
 #include "ant.h"
 #include "version.h"
 #include "types.h"
-#include "defines.h"
 #include "antdefines.h"
 #include "usb_device_handle.hpp"
 #include "dsi_serial_generic.hpp"

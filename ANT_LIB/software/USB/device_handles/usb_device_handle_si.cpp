@@ -669,7 +669,7 @@ void USBDeviceHandleSI::ReceiveThread()
       ResetEvent(hUSBEvent);
 
       ULONG ulRxBytesRead;
-      UCHAR ucRxByte;
+      UCHAR ucRxByte = 0;
       SiLabsLibrary* pclAutoSiLibrary = SiLabsLibrary::Load();
       SI_STATUS eStatus = (pclAutoSiLibrary == NULL) ? SI_INVALID_HANDLE : pclAutoSiLibrary->Read(hUSBDeviceHandle, &ucRxByte, 1, &ulRxBytesRead, &stOverlapped);
 

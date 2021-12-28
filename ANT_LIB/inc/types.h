@@ -18,7 +18,7 @@ All rights reserved.
          #define _WIN32_WINNT          0x0501
       #endif
    #else
-      #define _WIN32_WINNT             0X0501
+      #define _WIN32_WINNT             _WIN32_WINNT_WIN7
    #endif
 
    #include <windows.h>

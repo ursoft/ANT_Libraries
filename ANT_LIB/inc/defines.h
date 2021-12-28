@@ -9,8 +9,9 @@ All rights reserved.
 #ifndef DSI_DEFINES_H
 #define DSI_DEFINES_H
 
-#include "types.h"
 #define ENABLE_EDGE_REMOTE //need also environment variable "ZWIFT_EDGE_REMOTE=20_bit_edge_id"
+#define  _CRT_SECURE_NO_WARNINGS
+#include "types.h"
 
 
 //////////////////////////////////////////////////////////////////////////////////
