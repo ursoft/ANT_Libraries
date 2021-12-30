@@ -20,7 +20,7 @@ typedef void (*fptr_void_void)();
 
 std::unique_ptr<std::thread> glbSteeringThread;
 HANDLE glbWakeSteeringThread = INVALID_HANDLE_VALUE;
-float glbSteeringTask = 0.0, glbSteeringCurrent = 0.0;
+
 bool glbTerminate = false;
 
 char *new_char_zwift(int sz) {
@@ -58,6 +58,56 @@ bool equalUuids(const char* ext, const char* known) {
     if (ext == NULL || *ext == 0) return false;
     if (*ext == '{') ext++;
     return _memicmp(ext, known, 36) == 0;
+}
+
+const int KEY_MULT = 5; // многократность нажатия клавиши, которую мы умеем распознавать
+volatile float glbSteeringTask = 0.0,         // текущее задание
+      glbSteeringCurrent = 0.0,      // выданное только что значение (после чего задание зануляется и включается алгоритм поэтапного уведения в 0)
+      glbSteeringAutoNullStep = 5,   // на сколько за один раз приблизить к нулю (не более)
+      glbSteeringRange = 50,         // ограничение диапазона
+      glbSteeringDelta[2][KEY_MULT] = // массивы шагов по кратности - сперва для remote, потом для keyboard
+        { { 15, 20, 15, 20, 30 }, { 0.25, 1, 5, 10, 20 } };
+DWORD glbLastSteeringKey = -1, // какую кнопку нажали в прошлый раз
+      glbKeyRepeat = 0;        // номер повтора этой кнопки
+volatile LONGLONG glbSteeringLastTime = 0, // время последнего нажатия на кнопку
+         glbMaxBetweenKeys[2] = { 1000, 500 }; // максимальные времена между считающимися серийными нажатиями (тоже зависит от способностей клавиатуры)
+void OnSteeringKeyPress(DWORD key, bool bFastKeyboard) {
+    static LONGLONG start = GetTickCount64();
+    LONGLONG now = GetTickCount64(), msFromLastKeyPress = now - glbSteeringLastTime;
+    glbSteeringLastTime = now;
+    if (key == glbLastSteeringKey) {
+        if (msFromLastKeyPress <= glbMaxBetweenKeys[bFastKeyboard ? 1 : 0]) {
+            if (glbKeyRepeat < KEY_MULT - 1) glbKeyRepeat++;
+        } else {
+            glbKeyRepeat = 0;
+        }
+    } else {
+        glbLastSteeringKey = key;
+        glbKeyRepeat = 0;
+        if (glbSteeringTask != 0 || glbSteeringCurrent != 0) {
+            glbSteeringCurrent = glbSteeringTask = 0;
+            return;
+        }
+    }
+    glbSteeringTask += glbSteeringDelta[bFastKeyboard ? 1 : 0][glbKeyRepeat] * ((key == VK_LEFT) ? -1 : 1);
+    if (glbSteeringTask >= glbSteeringRange) glbSteeringTask = glbSteeringRange;
+    else if (glbSteeringTask <= -glbSteeringRange) glbSteeringTask = -glbSteeringRange;
+
+    char buf[1000];
+    sprintf(buf, "STEER: t=%05d dt=%05d %s.%d S=%f\n", (int)(now - start), (int)msFromLastKeyPress, (key == VK_LEFT) ? "LEFT" : "RIGHT", glbKeyRepeat, glbSteeringTask);
+    OutputDebugStringA(buf);
+}
+float CalcNewSteer() {
+    if (glbSteeringTask == 0.0) {
+        if (glbSteeringCurrent > 0.0)
+            glbSteeringCurrent -= min(glbSteeringAutoNullStep, glbSteeringCurrent);
+        else
+            glbSteeringCurrent += min(glbSteeringAutoNullStep, -glbSteeringCurrent);
+    } else {
+        glbSteeringCurrent = glbSteeringTask;
+        glbSteeringTask = 0;
+    }
+    return glbSteeringCurrent;
 }
 
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
@@ -110,9 +160,9 @@ extern "C" {
         //time
         char_value[3] = cdata ? cdata[8] : 0; char_value[4] = cdata ? cdata[9] : 0;
 
-        char tmp[100];
-        sprintf(tmp, "crank revolution #=%u, time=%d\n", (unsigned)char_value[1] + (unsigned)char_value[2] * 256, ((unsigned)char_value[3] + (unsigned)char_value[4] * 256)/1024);
-        OutputDebugString(tmp);
+        //char tmp[100];
+        //sprintf(tmp, "crank revolution #=%u, time=%d\n", (unsigned)char_value[1] + (unsigned)char_value[2] * 256, ((unsigned)char_value[3] + (unsigned)char_value[4] * 256)/1024);
+        //OutputDebugString(tmp);
         
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 5;
@@ -154,6 +204,7 @@ extern "C" {
                 bptr += sprintf(bptr, "serv: %s\n", service);
             }
             char* charact = *(char**)(service + 0x20), * end_charact = *(char**)(service + 0x28);
+            static volatile int subst_power = 7; //можно поменять в отладчике
             while (charact < end_charact) {
                 len = charact[16];
                 bool needConversion = false;
@@ -165,8 +216,9 @@ extern "C" {
                         char *real_charact_val = *(char**)(charact + 0x20);
                         if (!real_charact_val) {
                             char* pushing_const_val = new_char_dll(4);
-                            pushing_const_val[0] = pushing_const_val[1] = pushing_const_val[3] = 0;
-                            pushing_const_val[2] = 6; // чтобы отличить
+                            pushing_const_val[0] = pushing_const_val[1];
+                            pushing_const_val[3] = subst_power / 256;
+                            pushing_const_val[2] = subst_power % 256; // чтобы отличить
                             *(void**)(charact + 0x20) = pushing_const_val;
                             charact[0x28] = 4;
                         } else {
@@ -193,10 +245,7 @@ extern "C" {
                         bptr += sprintf(bptr, "-> ");
                         charact_len = 4;
                         charact[0x28] = charact_len;
-#if 0
-                        charact_val[0] = charact_val[1] = charact_val[3] = 0;
-                        charact_val[2] = 7; // чтобы отличить
-#else
+#if 1
                         static int64_t mLastCalories = 0;
                         static int mLastTime = 0; //в 1024-х долях секунды
                         static double mLastPower = -1.0;
@@ -248,14 +297,16 @@ extern "C" {
                             // 01000000 - 64  - 0x040 - Extreme Force Magnitudes Present
                             // 10000000 - 128 - 0x080 - Extreme Torque Magnitudes Present
                             int pwr = (int)(mLastPower + 0.5);
+#else
+                            int pwr = subst_power; { // полезно при тестировании, чтобы на педалях не потеть
+#endif
                             charact_val[0] = charact_val[1] = 0;
                             charact_val[2] = (byte)(pwr & 0xFF);
                             charact_val[3] = (byte)((pwr >> 8) & 0xFF);
-                            char tmp[100];
-                            sprintf(tmp, "mLastPower=%f\n", mLastPower);
-                            OutputDebugString(tmp);
+                            //char tmp[100];
+                            //sprintf(tmp, "mLastPower=%f\n", mLastPower);
+                            //OutputDebugString(tmp);
                             //Debug.WriteLine($"Time: {(int)(tim / 1024)}s, {(int)mLastPower}W, {calories >> 8}c, mult={mult}, {currentCadence()}rpm");
-#endif
                         }
 
                         for (int i = 0; i < charact_len; i++)
@@ -278,18 +329,7 @@ extern "C" {
         DumpBLEResponse(data);
         orgProcessBLEResponse(data);
     }
-    float CalcNewSteer() {
-        if (glbSteeringTask == 0.0) {
-            if (glbSteeringCurrent > 0.0)
-                glbSteeringCurrent -= min(10, glbSteeringCurrent);
-            else
-                glbSteeringCurrent += min(10, -glbSteeringCurrent);
-        } else {
-            glbSteeringCurrent = glbSteeringTask;
-            glbSteeringTask = 0;
-        }
-        return glbSteeringCurrent;
-    }
+
     void* newSteeringData(BleResponsePool &pool) {
         char* data = pool.Allocate(0x68);
         memset(data, 0, 0x68);
@@ -319,6 +359,11 @@ extern "C" {
         chars[0x10] = 36; chars[0x18] = 36;
         char *char_value = pool.Allocate(4);
         float steer = CalcNewSteer();
+
+        char buf[100];
+        sprintf(buf, "STEER_OUT=%f\n", steer);
+        OutputDebugStringA(buf);
+
         memcpy(char_value, &steer, 4);
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 4;
@@ -374,8 +419,10 @@ extern "C" {
                     bool left = (GetKeyState(VK_LEFT) & 0xF000), right = (GetKeyState(VK_RIGHT) & 0xF000);
                     ++counter;
                     if (counter > counterMax || left || right) {
-                        if (left && glbSteeringTask > -100) glbSteeringTask -= 10;
-                        if (right && glbSteeringTask < 100) glbSteeringTask += 10;
+                        if (left || right) {
+                            OnSteeringKeyPress(left ? VK_LEFT : VK_RIGHT, true);
+                            counterMax = 2;
+                        }
                         counter = 0;
                     }
                     else {
@@ -391,8 +438,8 @@ extern "C" {
                     OutputDebugString("ExecuteSteeringThread. Wake for exit");
                     return;
                 }
-                break;
                 counterMax = 2;
+                break;
             }
             if (orgProcessBLEResponse) {
                 BleResponsePool pool;

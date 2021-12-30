@@ -349,7 +349,7 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
                         49-0D-56-01-00-14-00-00 - long screen press (menu up = 0 dec). Можно зажать, будет повторяться периодически.
                 */
                 extern HANDLE glbWakeSteeringThread;
-                extern float glbSteeringTask;
+                extern void OnSteeringKeyPress(DWORD key, bool bFastKeyboard);
 
                 switch (glbEdgeRemoteChannelRxBuffer[ucDataOffset + 6] + 256 * glbEdgeRemoteChannelRxBuffer[ucDataOffset + 7]) {
                 case 0:
@@ -362,7 +362,7 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
 #if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Screen: quick press");
 #endif
-                    if (glbSteeringTask < 70) glbSteeringTask += 30;
+                    OnSteeringKeyPress(VK_RIGHT, false);
                     SetEvent(glbWakeSteeringThread);
                     EmitZwiftKeyPress(VK_RIGHT);
                     break;
@@ -370,7 +370,7 @@ BOOL EdgeRemoteLinkEvent(UCHAR ucANTChannel_, UCHAR ucEvent) {
 #if defined(DEBUG_FILE)
                     DSIDebug::ThreadPrintf("Blue: quick press");
 #endif
-                    if (glbSteeringTask > -70) glbSteeringTask -= 30;
+                    OnSteeringKeyPress(VK_LEFT, false);
                     SetEvent(glbWakeSteeringThread);
                     EmitZwiftKeyPress(VK_LEFT);
                     break;
