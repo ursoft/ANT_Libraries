@@ -3,12 +3,12 @@
 #include <BLE2902.h>
 #include "SSD1306Wire.h"
 
-#define DEBUG
+//#define DEBUG
 #define Y_PIN 12 // Joystick Yaxis to GPIO12
 #define B_PIN 13 // Joystick button to GPIO13
 #define X_PIN 14 // Joystick Xaxis to GPIO14
 #define ZERO_BOUNCE 40 // дребезг около начального значения
-#define MAX_ADC_RESOLUTION 4096 //ESP32 ADC is 12bit
+#define MAX_ADC_VAL 4095 //ESP32 ADC is 12bit
 #define MAX_STEER_ANGLE 35.0f
 //BLE Definitions
 #define STEERING_DEVICE_UUID "347b0001-7635-408b-8918-8ff3949ce592"
@@ -47,17 +47,24 @@ class MyServerCallbacks : public BLEServerCallbacks {
   }
 };
 float readAngle(int pin, int adcNull) { //Joystick read angle from axis
-  int potVal = analogRead(pin) - adcNull;
-#ifdef DEBUG
-   Serial.print(potVal); Serial.print(' '); Serial.println(pin);
-#endif
+  int adcVal = analogRead(pin);
+  if(adcVal == MAX_ADC_VAL) {
+    delay(5);
+    adcVal = analogRead(pin);
+  }
+  int potVal = adcVal - adcNull;
   float angle = 0.0;
   if (potVal > ZERO_BOUNCE || potVal < -ZERO_BOUNCE) {
     if(potVal < 0)
       angle = float(potVal) / adcNull * MAX_STEER_ANGLE;
     else
-      angle = float(potVal) / (MAX_ADC_RESOLUTION - adcNull - 1) * MAX_STEER_ANGLE;
+      angle = float(potVal) / (MAX_ADC_VAL - adcNull) * MAX_STEER_ANGLE;
   }
+#ifdef DEBUG
+   if(angle == MAX_STEER_ANGLE) {
+     Serial.print(adcVal); Serial.print(' '); Serial.print(pin); Serial.print(' '); Serial.println(angle);
+   }
+#endif
   return angle;
 }
 void initBle() {
@@ -95,6 +102,7 @@ void initBle() {
 #endif
 }
 void setup() {
+  pinMode(X_PIN, INPUT); pinMode(Y_PIN, INPUT); pinMode(B_PIN, INPUT);
   Serial.begin(115200);
   display.init();
   display.flipScreenVertically();
@@ -103,11 +111,19 @@ void setup() {
   display.drawString(0, 0, "Starting...");
   display.display();
   adcNullX = analogRead(X_PIN);
-  if (adcNullX <= 0 || adcNullX == MAX_ADC_RESOLUTION)
-      adcNullX = MAX_ADC_RESOLUTION / 2;
+  if (adcNullX <= 0 || adcNullX == MAX_ADC_VAL) {
+      adcNullX = (MAX_ADC_VAL + 1) / 2;
+#ifdef DEBUG
+   Serial.println("Fixed adcNullX");
+#endif
+  }
   adcNullY = analogRead(Y_PIN);
-  if (adcNullY <= 0 || adcNullY == MAX_ADC_RESOLUTION)
-      adcNullY = MAX_ADC_RESOLUTION / 2;
+  if (adcNullY <= 0 || adcNullY == MAX_ADC_VAL) {
+      adcNullY = (MAX_ADC_VAL + 1) / 2;
+#ifdef DEBUG
+   Serial.println("Fixed adcNullY");
+#endif
+  }
   initBle();
   display.clear();
   display.drawString(0, 0, "Waiting...");
@@ -126,21 +142,33 @@ void loop() {
         angle = angleX + angleY / 100.0;
       } else if(analogRead(B_PIN) == 0) {
         delay(10);
-        if(++buttonPressCount < 5) return; //anti-bounce
+        if(++buttonPressCount < 10) return; //anti-bounce
         buttonPressCount = 0;
         angle = 100.0; //button pressed
-      } else {
-        delay(25);
+      } else { // по нулям
+        //delay(25);
+        buttonPressCount = 0;
+      }
+      static float last_angle = -200.0;
+      static unsigned long last_tx_time = 0;
+      unsigned long now_time = millis();
+      if(angle == last_angle && now_time - last_tx_time < 1000) {
+        delay(10);
+        return; // не повторяемся слишком часто
       }
 #ifdef DEBUG
       Serial.println(angle);
 #endif
       pAngle->setValue(angle);
       pAngle->notify();
-      delay(250);
-      display.clear();
-      display.drawString(0, 0, String(angle));
-      display.display();
+      delay(50);
+      if(angle != last_angle) {
+        display.clear();
+        display.drawString(0, 0, String(angle));
+        display.display();
+      }
+      last_angle = angle;
+      last_tx_time = now_time;
     } else {
 #ifdef DEBUG
       Serial.println("Auth Challenging");
