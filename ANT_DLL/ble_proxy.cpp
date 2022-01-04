@@ -183,11 +183,13 @@ extern "C" {
         return data;
     }
     void doCadence(const byte* cdata);
-    void DumpBLEResponse(void* data) {
+    bool ParseBLEResponse(void* data) {
+        bool ret = true;
         char* byteData = (char*)data;
         char buf[512] = {}, * bptr = buf;
         uint64_t firstQword = *(uint64_t*)data;
         bptr += sprintf(bptr, "%016llX.%s %s\n", firstQword, byteData + 8, byteData + 0x28);
+        bool bJoystick = !memcmp(byteData + 0x28, "ESP Steer", 9);
         char* service = *(char**)(byteData + 0x50), * end_service = *(char**)(byteData + 0x58);
         while (service < end_service) {
             char len = service[16];
@@ -240,6 +242,35 @@ extern "C" {
                 int charact_len = charact[0x28];
                 for (int i = 0; i < charact_len; i++)
                     bptr += sprintf(bptr, "%02X ", (int)(unsigned char)charact_val[i]);
+                if (bJoystick && charact_len == 4) {
+                    float steerValue;
+                    memcpy(&steerValue, charact_val, 4);
+                    if (steerValue == 100.0) {
+                        mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                        ret = false;
+                    } else {
+                        // квадрант4: 35.35 -> xVal=35, yVal=0.35
+                        // квадрант3: -35 + 0.35 = -34.65 -> xVal=-34, yVal=-0.65
+                        // квадрант2: -35 - 0.35 = -35.35 -> xVal=-35, yVal=-0.35
+                        // квадрант1: 35 - 0.35 = 34.65 -> xVal=34, yVal=0.65
+                        float xVal = truncf(steerValue), yVal = (steerValue - xVal) * 100;
+                        if (yVal > 50) { // Q1
+                            steerValue = xVal + 1.0f;
+                            yVal = yVal - 100.0f;
+                        } else if (yVal > 0) { //Q4
+                            steerValue = xVal;
+                        } else if (yVal < -50) { //Q3
+                            steerValue = xVal - 1.0f;
+                            yVal = 100.0f + yVal;
+                        } else if (yVal < 0) { //Q2
+                            steerValue = xVal;
+                        }
+                        memcpy(charact_val, &steerValue, 4);
+                        if (steerValue != 0.0 || yVal != 0.0) {
+                            mouse_event(MOUSEEVENTF_MOVE, (DWORD)(int16_t)steerValue, (DWORD)(int16_t)yVal, 0, 0);
+                        }
+                    }
+                }
                 if (needConversion) {
                     if (charact_len == 0x11 && charact_val[0] == 0x11 && charact_val[1] == 0x20) { //11 20 00 80 10 00 00 80 9C 21 F7 40 05 00 00 00 04 
                         bptr += sprintf(bptr, "-> ");
@@ -322,11 +353,12 @@ extern "C" {
         }
         bptr += sprintf(bptr, "\n");
         //OutputDebugStringA(buf);
+        return ret;
     }
     void doCadence(const byte* cdata) {
         BleResponsePool pool;
         void* data = newCadenceData(cdata, pool);
-        DumpBLEResponse(data);
+        ParseBLEResponse(data);
         orgProcessBLEResponse(data);
     }
 
@@ -405,8 +437,8 @@ extern "C" {
     }
     void ProcessBLEResponse(void* data) {
         if (orgProcessBLEResponse) {
-            DumpBLEResponse(data);
-            orgProcessBLEResponse(data);
+            if(ParseBLEResponse(data))
+                orgProcessBLEResponse(data);
             BleResponsePoolFreeAll();
         }
     }
@@ -444,7 +476,7 @@ extern "C" {
             if (orgProcessBLEResponse) {
                 BleResponsePool pool;
                 void* data = newSteeringData(pool);
-                if (!glbTerminate) DumpBLEResponse(data);
+                if (!glbTerminate) ParseBLEResponse(data);
                 if (!glbTerminate) orgProcessBLEResponse(data);
                 if (glbSteeringTask == 0.0 && glbSteeringCurrent == 0.0)
                     counterMax = 20;
