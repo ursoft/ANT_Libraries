@@ -542,6 +542,10 @@ extern "C" {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetPeripheralDiscoveryFunc");
         return real(a1);
     }
+    __declspec(dllexport) void BLESetBLEErrorFunc(void *a1) {
+        static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetBLEErrorFunc");
+        if(real) real(a1);
+    }
     __declspec(dllexport) void BLESetProcessBLEResponse(void *a1) {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLESetProcessBLEResponse");
         orgProcessBLEResponse = (fptr_void_ptr)a1;
