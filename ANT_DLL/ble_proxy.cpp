@@ -22,6 +22,7 @@ std::unique_ptr<std::thread> glbSteeringThread;
 HANDLE glbWakeSteeringThread = INVALID_HANDLE_VALUE;
 
 bool glbTerminate = false;
+FILE* glbSchwinnDumpFile = NULL;
 
 char *new_char_zwift(int sz) {
     HANDLE heap = GetProcessHeap();
@@ -110,10 +111,82 @@ float CalcNewSteer() {
     return glbSteeringCurrent;
 }
 
+void PatchMainModule(const char* name, // "Trial.01",
+    size_t nBytes, //10,
+    const char* from, //"\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
+    const char* to //"\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+) {
+    char buf[1024];
+    HMODULE hMain = GetModuleHandle(NULL);
+    const void *base = (const void *)GetProcAddress(hMain, "AkTlsSetValue");
+    DWORD oldProtect;
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (0 == VirtualQuery(base, &mbi, sizeof(mbi))) {
+        sprintf(buf, "ZWIFT_PATCH.%s VirtualQuery failed\n", name);
+        OutputDebugString(buf);
+        return;
+    }
+    MEMORY_BASIC_INFORMATION mbi2 = {};
+    while(VirtualQuery((const uint8_t *)mbi.BaseAddress - 1, &mbi2, sizeof(mbi2))) {
+        if (mbi2.RegionSize < mbi.RegionSize)
+            break;
+        else
+            mbi = mbi2;
+    }
+    SIZE_T textLength = mbi.RegionSize;
+    uint8_t *foundAt = NULL, *curPtr = (uint8_t*)mbi.BaseAddress;
+    for (size_t i = 0; i < textLength - nBytes; i++) {
+        if (0 == memcmp(curPtr + i, from, nBytes)) {
+            if (foundAt == NULL) {
+                foundAt = curPtr + i;
+            } else {
+                sprintf(buf, "ZWIFT_PATCH.%s multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                OutputDebugString(buf);
+                return;
+            }
+        }
+    }
+    if (foundAt) {
+        sprintf(buf, "ZWIFT_PATCH.%s found in [%p, %d] at %p\n", name, mbi.BaseAddress, (int)textLength, foundAt);
+        OutputDebugString(buf);
+        VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, PAGE_EXECUTE_READWRITE, &oldProtect);
+        BOOL ok = WriteProcessMemory(GetCurrentProcess(), foundAt, to, nBytes, NULL);
+        VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, oldProtect, &oldProtect);
+        sprintf(buf, "ZWIFT_PATCH.%s WriteProcessMemory=%d\n", name, ok);
+        OutputDebugString(buf);
+    } else {
+        sprintf(buf, "ZWIFT_PATCH.%s not found in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+        OutputDebugString(buf);
+    }
+}
+
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
 {
     switch (fdwReason)     {
-    case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH: {
+        const char* patches_str = getenv("ZWIFT_PATCHES");
+        if (patches_str && *patches_str == '1') {
+            PatchMainModule(
+                "Trial.01", 10,
+                "\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
+                "\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+            );
+            PatchMainModule(
+                "Trial.02", 8,
+                "\x48\x8d\x4d\x9f\x41\x83\xcf\x08",
+                "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+            );
+            PatchMainModule(
+                "Trial.03", 8,
+                "\x48\x8d\x4d\x9f\x41\x83\xcf\x10",
+                "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+            );
+            PatchMainModule(
+                "Trial.04", 10,
+                "\xbb\x01\x0\x0\x0\xe9\x80\x0\x0\x0",
+                "\xbb\x03\x0\x0\x0\xe9\x80\x0\x0\x0"
+            );
+        }}
         break;
     case DLL_PROCESS_DETACH:
         glbTerminate = true;
@@ -128,6 +201,39 @@ bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
     }
     return true;
 }
+double CalcPowerNewAlgo(double cad, int resist) {
+    static const double coeffs[25][3] = { //from Excel trends
+        { -0.0005, 0.6451, -11.599 },
+        { 0.0004, 0.773, -12.325 },
+        { 0,      1.0186, -17.566 },
+        { 0.0008, 1.0256, -16.83 },
+        { 0.0049, 0.85, -10.95 },
+        { 0.0012, 1.549, -30.093 },
+        { 0.0018, 1.7378, -35.606 },
+        { 0.0048, 1.5708, -28.509 },
+        { 0.0055, 1.6728, -29.06 },
+        { 0.007, 1.8186, -31.254 },
+        { -0.002, 3.1643, -71.208 },
+        { 0.0046, 2.707, -48.821 },
+        { 0.0014, 3.5323, -72.418 },
+        { 0.0074, 2.8258, -51.258 },
+        { 0.0037, 3.7922, -72.192 },
+        { 0.0059, 3.7542, -69.219 },
+        { 0.0046, 4.0031, -73.953 },
+        { 0.0281, 2.3647, -33.012 },
+        { 0.0175, 3.1842, -53.739 },
+        { 0.0047, 4.5335, -75.077 },
+        { 0.0428, 1.7454, -14.955 },
+        { 0.0191, 4.044, -61.586 },
+        { 0.0518, 2.0345, -18.703 },
+        { 0.0325, 3.5994, -44.863 },
+        { -0.006, 7.7179, -128.45 }
+    };
+    int idx = (resist - 1) % 25;
+    double ret = coeffs[idx][0] * cad * cad + coeffs[idx][1] * cad + coeffs[idx][2];
+    return ret > 0.0 ? ret : 0.0;
+}
+
 extern "C" {
     fptr_void_ptr orgProcessBLEResponse = nullptr;
     void* newCadenceData(const byte *cdata, BleResponsePool &pool) {
@@ -277,20 +383,22 @@ extern "C" {
                         charact_len = 4;
                         charact[0x28] = charact_len;
 #if 1
-                        static int64_t mLastCalories = 0;
-                        static int mLastTime = 0; //в 1024-х долях секунды
-                        static double mLastPower = -1.0;
                         byte* cdata = (byte*)charact_val;
                         static byte oldc = 0xFF;
                         if (oldc != cdata[4]) { //иначе zwift нам весь каденс занулит
                             doCadence(cdata);
                             oldc = cdata[4];
                         }
-                        int64_t calories = cdata[10] | (cdata[11] << 8) | (cdata[12] << 16) | (cdata[13] << 24) | ((int64_t)cdata[14] << 32) | (int64_t(cdata[15] & 0x7F) << 40);
+                        static double mLastPower = -1.0;
                         int tim = cdata[8] | (cdata[9] << 8);
+                        static int mLastTime = 0; //в 1024-х долях секунды
+#ifdef OLD_ALGO
+                        static int64_t mLastCalories = 0;
+                        int64_t calories = cdata[10] | (cdata[11] << 8) | (cdata[12] << 16) | (cdata[13] << 24) | ((int64_t)cdata[14] << 32) | (int64_t(cdata[15] & 0x7F) << 40);
                         if (mLastCalories == 0 || tim == mLastTime) {
                             mLastCalories = calories;
                             mLastTime = tim;
+                            charact_val[0] = charact_val[1] = charact_val[2] = charact_val[3] = 0;
                         }
                         else {
                             int64_t dcalories = calories - mLastCalories;
@@ -312,12 +420,40 @@ extern "C" {
                             };
                             double mult = 0.42 * extra_mult[em_idx];
                             double power = (double)dcalories / (double)dtime * mult;
+#else //new algo: f(cadence, res)
+                        {
+                            double power = mLastPower;
+                            if (0 == cdata[3]) { //один раз из 8 (каждый круг)
+                                double powerByTicks = -10000.0, powerByDeviceTime = -10000.0;
+                                static DWORD mLastTick = GetTickCount(), startTicks = mLastTick;
+                                DWORD nowTicks = GetTickCount(), dTicks = nowTicks - mLastTick;
+                                mLastTick = nowTicks;
+                                if (dTicks > 0 && dTicks < 2000) {
+                                    double cadenceByTicks = 60000.0 / dTicks;
+                                    powerByTicks = CalcPowerNewAlgo(cadenceByTicks, cdata[16]);
+                                }
+                                int dTim = tim - mLastTime;
+                                mLastTime = tim;
+                                if (dTim > 0 && dTim < 2000) {
+                                    double cadenceByDev = 61440 / dTicks;
+                                    powerByDeviceTime = CalcPowerNewAlgo(cadenceByDev, cdata[16]);
+                                }
+                                double deltaPowerByTicks = fabs(powerByTicks - mLastPower), deltaPowerByDev = fabs(powerByDeviceTime - mLastPower);
+                                power = (deltaPowerByDev < deltaPowerByTicks) ? powerByDeviceTime : powerByTicks;
+                                if (glbSchwinnDumpFile) {
+                                    fprintf(glbSchwinnDumpFile, "%d,%d,%d,%f,%f,%f,%d\n", nowTicks - startTicks,
+                                        dTicks, dTim, powerByTicks, powerByDeviceTime, power, cdata[16]);
+                                    fflush(glbSchwinnDumpFile);
+                                }
+                            }
+
+#endif //OLD_ALGO
                             if (mLastPower == -1.0 || fabs(mLastPower - power) < 100.0)
                                 mLastPower = power;
                             else
                                 mLastPower += (power - mLastPower) / 2.0;
                             if (mLastPower < 0)
-                                mLastPower = 1;
+                                mLastPower = 0;
                             // flags
                             // 00000001 - 1   - 0x001 - Pedal Power Balance Present
                             // 00000010 - 2   - 0x002 - Pedal Power Balance Reference
@@ -392,9 +528,9 @@ extern "C" {
         char *char_value = pool.Allocate(4);
         float steer = CalcNewSteer();
 
-        char buf[100];
-        sprintf(buf, "STEER_OUT=%f\n", steer);
-        OutputDebugStringA(buf);
+        //char buf[100];
+        //sprintf(buf, "STEER_OUT=%f\n", steer);
+        //OutputDebugStringA(buf);
 
         memcpy(char_value, &steer, 4);
         *(void**)(chars + 0x20) = char_value;
@@ -507,6 +643,14 @@ extern "C" {
             glbSteeringThread.reset(new std::thread(ExecuteSteeringThread));
         }
 #endif
+        const char* dump_file = getenv("ZWIFT_DUMP_SCHWINN");
+        if (dump_file && *dump_file && NULL == glbSchwinnDumpFile) {
+            glbSchwinnDumpFile = fopen(dump_file, "wt");
+            if (glbSchwinnDumpFile) {
+                fprintf(glbSchwinnDumpFile, "ticks,dticks,ddev_t1024,pwr_t,pwr_d,power,resist\n");
+                fflush(glbSchwinnDumpFile);
+            }
+        }
     }
     __declspec(dllexport) void BLEPurgeDeviceList() {
         static fptr_void_void real = (fptr_void_void)GetProcAddress(org, "BLEPurgeDeviceList");
