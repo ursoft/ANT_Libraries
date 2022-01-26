@@ -1,0 +1,18 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="ZwiftHandler.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="ZwiftOfflineServerIp" Type="System.String" Scope="User">
+      <Value Profile="(Default)">192.168.1.40</Value>
+    </Setting>
+    <Setting Name="PatchSharedPath" Type="System.String" Scope="User">
+      <Value Profile="(Default)">z:\Zwift\ZG-Win\</Value>
+    </Setting>
+    <Setting Name="ZofflineBatch" Type="System.String" Scope="User">
+      <Value Profile="(Default)">C:\Users\Youra\Downloads\ZWiftOffline\start.bat</Value>
+    </Setting>
+    <Setting Name="ZwiftWindow" Type="System.Drawing.Rectangle" Scope="User">
+      <Value Profile="(Default)">0, 0, 0, 0</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
