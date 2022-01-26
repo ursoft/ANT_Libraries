@@ -372,8 +372,17 @@ extern "C" {
                             steerValue = xVal;
                         }
                         memcpy(charact_val, &steerValue, 4);
+                        static int16_t lastDx = 0, lastDy = 0;
                         if (steerValue != 0.0 || yVal != 0.0) {
-                            mouse_event(MOUSEEVENTF_MOVE, (DWORD)(int16_t)steerValue, (DWORD)(int16_t)yVal, 0, 0);
+                            int16_t dx = (int16_t)steerValue, dy = (int16_t)yVal;
+                            if (dx * lastDx <= 0) dx /= 2; else if (dx / lastDx > 2) dx = 2 * lastDx;
+                            if (dy * lastDy <= 0) dy /= 2; else if (dy / lastDy > 2) dy = 2 * lastDy;
+                            sprintf(bptr, "dx=%d, dy=%d, lastDx=%d, lastDy=%d\n", (int)dx, (int)dy, (int)lastDx, (int)lastDy);
+                            OutputDebugStringA(buf);
+                            mouse_event(MOUSEEVENTF_MOVE, (DWORD)dx, (DWORD)dy, 0, 0);
+                            lastDx = dx; lastDy = dy;
+                        } else {
+                            lastDx = 0; lastDy = 0;
                         }
                     }
                 }

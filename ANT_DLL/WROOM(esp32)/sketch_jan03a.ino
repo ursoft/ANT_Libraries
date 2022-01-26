@@ -152,7 +152,7 @@ void loop() {
       static float last_angle = -200.0;
       static unsigned long last_tx_time = 0;
       unsigned long now_time = millis();
-      if(angle == last_angle && now_time - last_tx_time < 1000) {
+      if(angle == last_angle && now_time - last_tx_time < 250) {
         delay(10);
         return; // не повторяемся слишком часто
       }
