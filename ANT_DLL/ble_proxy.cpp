@@ -160,6 +160,125 @@ void PatchMainModule(const char* name, // "Trial.01",
     }
 }
 
+int ReplaceFloat(float *fptr, DWORD *offset, bool back, float repl)
+{
+    float* new_fptr = fptr;
+    DWORD new_offset = *offset;
+    for (int i = 0; i < 16384; i++) {
+        if (back) {
+            new_fptr--;
+            new_offset -= 4;
+        }
+        else {
+            new_fptr++;
+            new_offset += 4;
+        }
+        if (IsBadReadPtr(new_fptr, 4))
+            break;
+        if (fabs(*new_fptr - repl) <= 1) {
+            char buf[1024];
+            sprintf(buf, "ZWIFT_PATCH: [%p]: %x -> %x (%f -> %f aeq %f)\n", offset, *offset, new_offset, *fptr, *new_fptr, repl);
+            OutputDebugString(buf);
+            *offset = new_offset;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int TryFloatPatch(uint8_t* foundAt, float search1, float repl1, float search2, float repl2) {
+    int ret = 0;
+    for (int back = 8; back < 48 && ret < 2; back++) {
+        uint8_t* tryFrom = foundAt - back;
+        if (tryFrom[0] == 0xF3 && tryFrom[1] == 0x0f) {
+            DWORD* offset = (DWORD *)tryFrom + 1;
+            float *fptr = (float *)(tryFrom + 8 + *offset);
+            if (tryFrom[2] == 0x10 && tryFrom[3] == 0x0d) {
+                if (IsBadReadPtr(fptr, 4)) continue;
+                if (search1 == *fptr) {
+                    ret += ReplaceFloat(fptr, offset, search1 > repl1, repl1);
+                }
+            }
+            else if (tryFrom[2] == 0x59 && tryFrom[3] == 0x05) {
+                if (IsBadReadPtr(fptr, 4)) continue;
+                if (search2 == *(float*)fptr) {
+                    ret += ReplaceFloat(fptr, offset, search2 > repl2, repl2);
+                }
+            }
+        }
+    }
+    return ret;
+}
+
+void PatchMainModuleNeo(const char* name,
+    float search1, float repl1, //100->80
+    float search2, float repl2) { //20->60
+    char buf[1024];
+    HMODULE hMain = GetModuleHandle(NULL);
+    const void *base = (const void *)GetProcAddress(hMain, "AkTlsSetValue");
+    DWORD oldProtect;
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (0 == VirtualQuery(base, &mbi, sizeof(mbi))) {
+        sprintf(buf, "ZWIFT_PATCH.%s VirtualQuery failed\n", name);
+        OutputDebugString(buf);
+        return;
+    }
+    MEMORY_BASIC_INFORMATION mbi2 = {};
+    while(VirtualQuery((const uint8_t *)mbi.BaseAddress - 1, &mbi2, sizeof(mbi2))) {
+        if (mbi2.RegionSize < mbi.RegionSize)
+            break;
+        else
+            mbi = mbi2;
+    }
+    SIZE_T textLength = mbi.RegionSize;
+    const byte marker[] = { 
+        0x0f, 0x28, 0xf1,       // movaps xmm6, xmm1
+        0xf3, 0x0f, 0x5c, 0xf0, // subss xmm 6, xmm0
+        0x0f, 0x57              // xorps xmm0, ?
+    };
+    uint8_t *curPtr = (uint8_t*)mbi.BaseAddress, *foundAt2 = NULL, *foundAt1 = NULL;
+    for (size_t i = 48; i < textLength; i++) {
+        if (0 == memcmp(curPtr + i, marker, sizeof(marker))) {
+            switch (*(curPtr + i + sizeof(marker))) {
+            case 0xd2:
+                if (foundAt2 == NULL) {
+                    foundAt2 = curPtr + i;
+                    break;
+                }
+                sprintf(buf, "ZWIFT_PATCH.%s 0xd2 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                OutputDebugString(buf);
+                return;
+            case 0xc0:
+                if (foundAt1 == NULL) {
+                    foundAt1 = curPtr + i;
+                    break;
+                }
+                sprintf(buf, "ZWIFT_PATCH.%s 0xc0 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                OutputDebugString(buf);
+                return;
+            default:
+                sprintf(buf, "ZWIFT_PATCH.%s unkfound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                OutputDebugString(buf);
+                return;
+            }
+        }
+    }
+    if (foundAt1 && foundAt2) {
+        sprintf(buf, "ZWIFT_PATCH.%s found in [%p, %d] at %p && %p\n", name, mbi.BaseAddress, (int)textLength, foundAt1, foundAt2);
+        OutputDebugString(buf);
+        VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, PAGE_EXECUTE_READWRITE, &oldProtect);
+        int fp_cnt = TryFloatPatch(foundAt1, search1, repl1, search2, repl2);
+        sprintf(buf, "ZWIFT_PATCH.%s TryFloatPatch1=%d/2\n", name, fp_cnt);
+        OutputDebugString(buf);
+        fp_cnt = TryFloatPatch(foundAt2, search1, repl1, search2, repl2);
+        sprintf(buf, "ZWIFT_PATCH.%s TryFloatPatch2=%d/2\n", name, fp_cnt);
+        OutputDebugString(buf);
+        VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, oldProtect, &oldProtect);
+    } else {
+        sprintf(buf, "ZWIFT_PATCH.%s both not found in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+        OutputDebugString(buf);
+    }
+}
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
 {
     switch (fdwReason)     {
@@ -186,6 +305,7 @@ bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
                 "\xbb\x01\x0\x0\x0\xe9\x80\x0\x0\x0",
                 "\xbb\x03\x0\x0\x0\xe9\x80\x0\x0\x0"
             );
+            PatchMainModuleNeo("Neo80,100->20,80", 100.0, 80.0, 20.0, 60.0);
         }}
         break;
     case DLL_PROCESS_DETACH:

@@ -180,7 +180,7 @@
       </Command>
     </CustomBuildStep>
     <PostBuildEvent>
-      <Command>copy $(TargetPath) z:\Zwift\ZG-Win\</Command>
+      <Command>copy $(TargetPath) "\\KEENETIC_GIGA\My Passport\Zwift\ZG-Win\"</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>Publish to Z</Message>
