@@ -5,12 +5,19 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <list>
 #include <cmath>
 #include <sysinfoapi.h>
+#include <bluetoothleapis.h>
+#include <BthLEDef.h>
+#include <SetupAPI.h>
 
 const char *SCHWINN_SERV = "3bf58980-3a2f-11e6-9011-0002a5d5c51b";
-const char *SCHWINN_CHAR = "5c7d82a0-9803-11e3-8a6c-0002a5d5c51b";
-const char *SCHWINN_SHORT_CHAR = "0x5c7d82a0";
+GUID GUID_BLUETOOTHLE_SCHWINN_SERV = { 0x3bf58980, 0x3a2f, 0x11e6, {0x90, 0x11, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b} };
+const char *SCHWINN_CHAR_EVENT = "5c7d82a0-9803-11e3-8a6c-0002a5d5c51b";
+const char *SCHWINN_SHORT_CHAR_EVENT = "0x5c7d82a0";
+const char *SCHWINN_CHAR_SRD0 = "6be8f580-9803-11e3-ab03-0002a5d5c51b";
+const char *SCHWINN_SHORT_CHAR_SRD0 = "0x6be8f580";
 
 HMODULE org = LoadLibraryA("BleWin10Lib.org.dll");
 typedef bool (*fptr_bool_ptr)(void *);
@@ -94,9 +101,9 @@ void OnSteeringKeyPress(DWORD key, bool bFastKeyboard) {
     if (glbSteeringTask >= glbSteeringRange) glbSteeringTask = glbSteeringRange;
     else if (glbSteeringTask <= -glbSteeringRange) glbSteeringTask = -glbSteeringRange;
 
-    char buf[1000];
+    /*char buf[1000];
     sprintf(buf, "STEER: t=%05d dt=%05d %s.%d S=%f\n", (int)(now - start), (int)msFromLastKeyPress, (key == VK_LEFT) ? "LEFT" : "RIGHT", glbKeyRepeat, glbSteeringTask);
-    OutputDebugStringA(buf);
+    OutputDebugStringA(buf);*/
 }
 float CalcNewSteer() {
     if (glbSteeringTask == 0.0) {
@@ -386,10 +393,11 @@ extern "C" {
         //time
         char_value[3] = cdata ? cdata[8] : 0; char_value[4] = cdata ? cdata[9] : 0;
 
-        //char tmp[100];
-        //sprintf(tmp, "crank revolution #=%u, time=%d\n", (unsigned)char_value[1] + (unsigned)char_value[2] * 256, ((unsigned)char_value[3] + (unsigned)char_value[4] * 256)/1024);
-        //OutputDebugString(tmp);
-        
+        /*if (cdata) {
+            char tmp[100];
+            sprintf(tmp, "crank revolution #=%f, time=%f\n", (unsigned)cdata[3]/256.0 + (unsigned)char_value[1] + (unsigned)char_value[2] * 256, ((unsigned)char_value[3] + (unsigned)char_value[4] * 256) / 1024);
+            OutputDebugString(tmp);
+        }*/
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 5;
         /*chars += 0x30;
@@ -409,8 +417,10 @@ extern "C" {
         return data;
     }
     void doCadence(const byte* cdata);
+    static char glbLastSchwinnPseudoHandle[32] = {};
+    static DWORD glbLastSchwinnPowerTick = GetTickCount(), glbStartTicks = glbLastSchwinnPowerTick, glbLastSchwinnPowerIncome = glbLastSchwinnPowerTick;
     bool ParseBLEResponse(void* data) {
-        bool ret = true;
+        int useful_chunks = 0;
         char* byteData = (char*)data;
         char buf[512] = {}, * bptr = buf;
         uint64_t firstQword = *(uint64_t*)data;
@@ -419,8 +429,9 @@ extern "C" {
         char* service = *(char**)(byteData + 0x50), * end_service = *(char**)(byteData + 0x58);
         while (service < end_service) {
             char len = service[16];
+            char *longServ = NULL;
             if (len > 16) {
-                char* longServ = *(char**)service;
+                longServ = *(char**)service;
                 if (equalUuids(longServ, SCHWINN_SERV)) {
                     memcpy(longServ, "0x1818", 7);
                     ///!!!service[16] = 6;
@@ -435,33 +446,55 @@ extern "C" {
             static volatile int subst_power = 7; //можно поменять в отладчике
             while (charact < end_charact) {
                 len = charact[16];
-                bool needConversion = false;
+                bool needPowerConversion = false, needHrConversion = false;
                 if (len > 16) {
                     char* longChar = *(char**)charact;
-                    if (equalUuids(longChar, SCHWINN_CHAR)) {
+                    bptr += sprintf(bptr, "charact: %s ", longChar);
+                    if (equalUuids(longChar, SCHWINN_CHAR_EVENT)) {
                         memcpy(longChar, "0x2a63", 7);
                         ///!!!charact[16] = 6;
-                        char *real_charact_val = *(char**)(charact + 0x20);
+                        char* real_charact_val = *(char**)(charact + 0x20);
                         if (!real_charact_val) {
                             char* pushing_const_val = new_char_dll(4);
-                            pushing_const_val[0] = pushing_const_val[1];
+                            pushing_const_val[0] = pushing_const_val[1] = 0;
                             pushing_const_val[3] = subst_power / 256;
                             pushing_const_val[2] = subst_power % 256; // чтобы отличить
                             *(void**)(charact + 0x20) = pushing_const_val;
                             charact[0x28] = 4;
-                        } else {
-                            needConversion = true;
+                        }
+                        else {
+                            needPowerConversion = true;
+                        }
+                    } else if (longServ && equalUuids(longChar, SCHWINN_CHAR_SRD0)) {
+                        memcpy(longServ, "0x180D", 7); //Heart Rate Service
+                        memcpy(longChar, "0x2A37", 7); //Heart Rate Measurement
+                        ///!!!charact[16] = 6;
+                        char* real_charact_val = *(char**)(charact + 0x20);
+                        if (!real_charact_val) {
+                            char* pushing_const_val = new_char_dll(2);
+                            pushing_const_val[0] = 0;   //flags
+                            pushing_const_val[1] = 123; //чтобы отличить
+                            *(void**)(charact + 0x20) = pushing_const_val;
+                            charact[0x28] = 2;
+                            strncpy_s(glbLastSchwinnPseudoHandle, sizeof(glbLastSchwinnPseudoHandle), byteData + 8, sizeof(glbLastSchwinnPseudoHandle));
+                        }
+                        else {
+                            needHrConversion = true;
                         }
                     }
-                    bptr += sprintf(bptr, "charact: %s ", longChar);
                 }
                 else {
                     bptr += sprintf(bptr, "charact: %s ", charact);
-                    if (_memicmp(charact, SCHWINN_SHORT_CHAR, 10) == 0) {
+                    if (_memicmp(charact, SCHWINN_SHORT_CHAR_EVENT, 10) == 0) {
                         memcpy(charact, "0x2a63", 7);
                         len = 6;
                         charact[16] = len;
-                        needConversion = true;
+                        needPowerConversion = true;
+                    } else if (_memicmp(charact, SCHWINN_SHORT_CHAR_SRD0, 10) == 0) {
+                        memcpy(charact, "0x2A37", 7); //heart rate service
+                        len = 6;
+                        charact[16] = len;
+                        needHrConversion = true;
                     }
                 }
                 char* charact_val = *(char**)(charact + 0x20);
@@ -473,8 +506,8 @@ extern "C" {
                     memcpy(&steerValue, charact_val, 4);
                     if (steerValue == 100.0) {
                         mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-                        ret = false;
                     } else {
+                        useful_chunks++;
                         // квадрант4: 35.35 -> xVal=35, yVal=0.35
                         // квадрант3: -35 + 0.35 = -34.65 -> xVal=-34, yVal=-0.65
                         // квадрант2: -35 - 0.35 = -35.35 -> xVal=-35, yVal=-0.35
@@ -497,8 +530,8 @@ extern "C" {
                             int16_t dx = (int16_t)steerValue, dy = (int16_t)yVal;
                             if (dx * lastDx <= 0) dx /= 2; else if (dx / lastDx > 2) dx = 2 * lastDx;
                             if (dy * lastDy <= 0) dy /= 2; else if (dy / lastDy > 2) dy = 2 * lastDy;
-                            sprintf(bptr, "dx=%d, dy=%d, lastDx=%d, lastDy=%d\n", (int)dx, (int)dy, (int)lastDx, (int)lastDy);
-                            OutputDebugStringA(buf);
+                            //sprintf(bptr, "dx=%d, dy=%d, lastDx=%d, lastDy=%d\n", (int)dx, (int)dy, (int)lastDx, (int)lastDy);
+                            //OutputDebugStringA(buf);
                             mouse_event(MOUSEEVENTF_MOVE, (DWORD)dx, (DWORD)dy, 0, 0);
                             lastDx = dx; lastDy = dy;
                         } else {
@@ -506,7 +539,26 @@ extern "C" {
                         }
                     }
                 }
-                if (needConversion) {
+                else if (bJoystick) {
+                    useful_chunks++; //to show steering device
+                }
+                if (needHrConversion) {
+                    strncpy_s(glbLastSchwinnPseudoHandle, sizeof(glbLastSchwinnPseudoHandle), byteData + 8, sizeof(glbLastSchwinnPseudoHandle));
+                    if (charact_len == 20) {
+                        static DWORD last_tick = 0;
+                        DWORD now_tick = GetTickCount();
+                        if (now_tick - last_tick > 1000) {
+                            last_tick = now_tick;
+                            byte new_hr = charact_val[16];
+                            charact_len = 2;
+                            charact_val[0] = 0;
+                            charact_val[1] = new_hr;
+                            charact[0x28] = charact_len;
+                            useful_chunks++;
+                        }
+                    }
+                } else if (needPowerConversion) {
+                    useful_chunks++;
                     if (charact_len == 0x11 && charact_val[0] == 0x11 && charact_val[1] == 0x20) { //11 20 00 80 10 00 00 80 9C 21 F7 40 05 00 00 00 04 
                         bptr += sprintf(bptr, "-> ");
                         charact_len = 4;
@@ -514,7 +566,7 @@ extern "C" {
 #if 1
                         byte* cdata = (byte*)charact_val;
                         static byte oldc = 0xFF;
-                        if (oldc != cdata[4]) { //иначе zwift нам весь каденс занулит
+                        if (oldc != cdata[4] && cdata[3] == 0) { //иначе zwift нам весь каденс занулит
                             doCadence(cdata);
                             oldc = cdata[4];
                         }
@@ -552,25 +604,33 @@ extern "C" {
 #else //new algo: f(cadence, res)
                         {
                             double power = mLastPower;
-                            if (0 == cdata[3]) { //один раз из 8 (каждый круг)
+                            DWORD nowTicks = GetTickCount(), dTicks = nowTicks - glbLastSchwinnPowerTick;
+                            glbLastSchwinnPowerIncome = nowTicks;
+                            static double oldCranks = -1.0;
+                            double newCranks = cdata[3] / 256 + cdata[4] + cdata[5] * 256;
+                            while (newCranks < oldCranks) newCranks += 65536.0;
+                            if (oldCranks < 0) {
+                                oldCranks = newCranks; 
+                            }
+                            double dCranks = newCranks - oldCranks;
+                            if (dCranks > 1.0) {
+                                oldCranks = newCranks;
                                 double powerByTicks = -10000.0, powerByDeviceTime = -10000.0;
-                                static DWORD mLastTick = GetTickCount(), startTicks = mLastTick;
-                                DWORD nowTicks = GetTickCount(), dTicks = nowTicks - mLastTick;
-                                mLastTick = nowTicks;
+                                glbLastSchwinnPowerTick = nowTicks;
                                 if (dTicks > 0 && dTicks < 2000) {
-                                    double cadenceByTicks = 60000.0 / dTicks;
+                                    double cadenceByTicks = dCranks * 60000.0 / dTicks;
                                     powerByTicks = CalcPowerNewAlgo(cadenceByTicks, cdata[16]);
                                 }
                                 int dTim = tim - mLastTime;
                                 mLastTime = tim;
                                 if (dTim > 0 && dTim < 2000) {
-                                    double cadenceByDev = 61440 / dTicks;
+                                    double cadenceByDev = dCranks * 61440.0 / dTicks;
                                     powerByDeviceTime = CalcPowerNewAlgo(cadenceByDev, cdata[16]);
                                 }
                                 double deltaPowerByTicks = fabs(powerByTicks - mLastPower), deltaPowerByDev = fabs(powerByDeviceTime - mLastPower);
                                 power = (deltaPowerByDev < deltaPowerByTicks) ? powerByDeviceTime : powerByTicks;
                                 if (glbSchwinnDumpFile) {
-                                    fprintf(glbSchwinnDumpFile, "%d,%d,%d,%f,%f,%f,%d\n", nowTicks - startTicks,
+                                    fprintf(glbSchwinnDumpFile, "%d,%d,%d,%f,%f,%f,%d\n", nowTicks - glbStartTicks,
                                         dTicks, dTim, powerByTicks, powerByDeviceTime, power, cdata[16]);
                                     fflush(glbSchwinnDumpFile);
                                 }
@@ -608,17 +668,14 @@ extern "C" {
                         for (int i = 0; i < charact_len; i++)
                             bptr += sprintf(bptr, " %02X ", (int)(unsigned char)charact_val[i]);
                     }
-                    else {
-                        doCadence(NULL);
-                    }
-                }
+                } else useful_chunks++;
                 charact += 0x30;
             }
             service += 0x38;
         }
-        bptr += sprintf(bptr, "\n");
+        bptr += sprintf(bptr, " uch=%d\n", useful_chunks);
         //OutputDebugStringA(buf);
-        return ret;
+        return useful_chunks > 0;
     }
     void doCadence(const byte* cdata) {
         BleResponsePool pool;
@@ -627,6 +684,36 @@ extern "C" {
         orgProcessBLEResponse(data);
     }
 
+    void* nullPowerCadenceData(BleResponsePool &pool) { //only power yet
+        char* data = pool.Allocate(0x68);
+        memset(data, 0, 0x68);
+        data[0] = 2;
+        memcpy(data + 8, glbLastSchwinnPseudoHandle, 15);
+        data[0x18] = (char)strlen(data + 8); data[0x20] = 15;
+        memcpy(data + 0x28, "SCHWINN 170/270", 15);
+        data[0x38] = 15; data[0x40] = 15;
+        char* serv = pool.Allocate(0x38);
+        memset(serv, 0, 0x38);
+        *(void**)(data + 0x50) = serv;
+        *(void**)(data + 0x58) = serv + 0x38;
+        *(void**)(data + 0x60) = serv + 0x38;
+        memcpy(serv, "0x1818", 6);
+        serv[0x10] = 6; serv[0x18] = 15;
+        int numchars = 1;
+        char* chars = pool.Allocate(0x30 * numchars);
+        memset(chars, 0, 0x30 * numchars);
+        *(void**)(serv + 0x20) = chars;
+        *(void**)(serv + 0x28) = chars + 0x30 * numchars;
+        *(void**)(serv + 0x30) = chars + 0x30 * numchars;
+        memcpy(chars, "0x2a63", 6);
+        chars[0x10] = 6; chars[0x18] = 15;
+        char *char_value = pool.Allocate(4);
+        char_value[0] = 0; char_value[1] = 0; char_value[2] = 0; char_value[3] = 0;
+
+        *(void**)(chars + 0x20) = char_value;
+        chars[0x28] = 4;
+        return data;
+    }
     void* newSteeringData(BleResponsePool &pool) {
         char* data = pool.Allocate(0x68);
         memset(data, 0, 0x68);
@@ -711,11 +798,12 @@ extern "C" {
         int counter = 0, counterMax = 20;
         OutputDebugString("Enter ExecuteSteeringThread");
         do {
+            bool bSchwinnStopped = (GetTickCount() - glbLastSchwinnPowerIncome > 500 && glbStartTicks != glbLastSchwinnPowerIncome);
             switch (WaitForSingleObject(glbWakeSteeringThread, 50)) {
             case WAIT_TIMEOUT: { //ничего не происходит
                     bool left = (GetKeyState(VK_LEFT) & 0xF000), right = (GetKeyState(VK_RIGHT) & 0xF000);
                     ++counter;
-                    if (counter > counterMax || left || right) {
+                    if (counter > counterMax || left || right || bSchwinnStopped) {
                         if (left || right) {
                             OnSteeringKeyPress(left ? VK_LEFT : VK_RIGHT, true);
                             counterMax = 2;
@@ -743,6 +831,14 @@ extern "C" {
                 void* data = newSteeringData(pool);
                 if (!glbTerminate) ParseBLEResponse(data);
                 if (!glbTerminate) orgProcessBLEResponse(data);
+                if (!glbTerminate && bSchwinnStopped) {
+                    data = nullPowerCadenceData(pool);
+                    if (!glbTerminate) ParseBLEResponse(data);
+                    if (!glbTerminate) orgProcessBLEResponse(data);
+                    data = newCadenceData(NULL, pool);
+                    if (!glbTerminate) ParseBLEResponse(data);
+                    if (!glbTerminate) orgProcessBLEResponse(data);
+                }
                 if (glbSteeringTask == 0.0 && glbSteeringCurrent == 0.0)
                     counterMax = 20;
             }
@@ -758,7 +854,173 @@ extern "C" {
         }
     }*/
 
+    void pushSchwinnToGetHeartRate() {
+        HANDLE deviceHandle = INVALID_HANDLE_VALUE;
+        char buf[1024];
+        HDEVINFO handle_ = INVALID_HANDLE_VALUE;
+        GUID BluetoothClassGUID = GUID_BLUETOOTHLE_SCHWINN_SERV;
+        HDEVINFO result = SetupDiGetClassDevs(
+            &BluetoothClassGUID,
+            NULL,
+            NULL,
+            //DIGCF_PRESENT | DIGCF_ALLCLASSES | DIGCF_DEVICEINTERFACE));
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+
+        if (result == INVALID_HANDLE_VALUE) {
+            sprintf(buf, "SetupDiGetClassDevs:INVALID_HANDLE_VALUE, le=%x\n", GetLastError());
+            OutputDebugStringA(buf);
+            return;
+        }
+
+        if (handle_ != INVALID_HANDLE_VALUE) {
+            SetupDiDestroyDeviceInfoList(handle_);
+            handle_ = INVALID_HANDLE_VALUE;
+        }
+        handle_ = result;
+
+        GUID BluetoothInterfaceGUID = GUID_BLUETOOTHLE_SCHWINN_SERV;
+
+        //std::vector<SP_DEVICE_INTERFACE_DATA> ble_interfaces;
+        std::vector<std::string> ble_paths;
+
+        // Enumerate device of LE_DEVICE interface class
+        for (int i = 0;; i++) {
+            std::string error;
+            SP_DEVICE_INTERFACE_DATA device_interface_data = { 0 };
+            device_interface_data.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+            BOOL success = SetupDiEnumDeviceInterfaces(
+                handle_,
+                NULL,
+                (LPGUID)&BluetoothInterfaceGUID,
+                (DWORD)i,
+                &device_interface_data);
+            if (!success) {
+                DWORD last_error = GetLastError();
+                if (last_error == ERROR_NO_MORE_ITEMS) {
+                    //Enum devices finished.
+                    break;
+                }
+                else {
+                    sprintf(buf, "Error enumerating device interfaces, le=%x\n", last_error);
+                    OutputDebugStringA(buf);
+                    return;
+                }
+            }
+
+            // Retrieve required # of bytes for interface details
+            ULONG required_length = 0;
+            success = SetupDiGetDeviceInterfaceDetail(
+                handle_,
+                &device_interface_data,
+                NULL,
+                0,
+                &required_length,
+                NULL);
+            std::unique_ptr<UINT8> interface_data(new UINT8[required_length]);
+            RtlZeroMemory(interface_data.get(), required_length);
+
+            PSP_DEVICE_INTERFACE_DETAIL_DATA device_interface_detail_data = reinterpret_cast<PSP_DEVICE_INTERFACE_DETAIL_DATA>(interface_data.get());
+            device_interface_detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+
+            SP_DEVINFO_DATA device_info_data = { 0 };
+            device_info_data.cbSize = sizeof(SP_DEVINFO_DATA);
+
+            ULONG actual_length = required_length;
+            success = SetupDiGetDeviceInterfaceDetail(
+                handle_,
+                &device_interface_data,
+                device_interface_detail_data,
+                actual_length,
+                &required_length,
+                &device_info_data);
+
+            //Store data
+            std::string strpath = std::string(device_interface_detail_data->DevicePath);
+            /*OLECHAR* bstrGuid;
+            StringFromCLSID(device_interface_data.InterfaceClassGuid, &bstrGuid);*/
+            ble_paths.push_back(strpath);
+            //ble_interfaces.push_back(device_interface_data);
+            //sprintf(buf, "ble_paths+=%s\n", strpath.c_str());
+            //OutputDebugStringA(buf);
+        }
+
+        //Select device to open
+        std::string path = ble_paths[0];
+        USHORT required_count = 0;
+        // Get GATT Services Count
+        deviceHandle = CreateFile(path.c_str(), GENERIC_WRITE | GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (deviceHandle == INVALID_HANDLE_VALUE) {
+            sprintf(buf, "CreateFile:INVALID_HANDLE_VALUE, le=%x, path=%s\n", GetLastError(), path.c_str());
+            OutputDebugStringA(buf);
+            return;
+        }
+
+        HRESULT hr = BluetoothGATTGetServices(deviceHandle, 0, NULL, &required_count, BLUETOOTH_GATT_FLAG_NONE);
+        if (required_count == 0) {
+            sprintf(buf, "BluetoothGATTGetServices:%x, %d le=%x\n", hr, required_count, GetLastError());
+            OutputDebugStringA(buf);
+            return;
+        }
+        //Get GATT Services
+        std::string error;
+        std::unique_ptr<BTH_LE_GATT_SERVICE> services(new BTH_LE_GATT_SERVICE[required_count]);
+        USHORT actual_count = required_count;
+        hr = BluetoothGATTGetServices(deviceHandle, actual_count, services.get(), &required_count, BLUETOOTH_GATT_FLAG_NONE);
+        if (hr) {
+            sprintf(buf, "BluetoothGATTGetServices:%x le=%x\n", hr, GetLastError());
+            OutputDebugStringA(buf);
+            CloseHandle(deviceHandle);
+            return;
+        }
+
+        for (int i = 0; i < actual_count; i++) {
+            BTH_LE_GATT_SERVICE& service(services.get()[i]);
+
+            //Get GATT Characteristics
+            USHORT required_count;
+            HRESULT hr = BluetoothGATTGetCharacteristics(deviceHandle, &service, 0, NULL, &required_count, BLUETOOTH_GATT_FLAG_NONE);
+
+            if (hr != HRESULT_FROM_WIN32(ERROR_MORE_DATA)) {
+                sprintf(buf, "BluetoothGATTGetCharacteristics:%x, %d le=%x\n", hr, required_count, GetLastError());
+                OutputDebugStringA(buf);
+                CloseHandle(deviceHandle);
+                return;
+            }
+
+            std::unique_ptr<BTH_LE_GATT_CHARACTERISTIC> gatt_characteristics(new BTH_LE_GATT_CHARACTERISTIC[required_count]);
+            USHORT actual_count = required_count;
+            hr = BluetoothGATTGetCharacteristics(deviceHandle, &service, actual_count, gatt_characteristics.get(), &required_count, BLUETOOTH_GATT_FLAG_NONE);
+            if (hr) {
+                sprintf(buf, "BluetoothGATTGetCharacteristics:%x le=%x\n", hr, GetLastError());
+                OutputDebugStringA(buf);
+                CloseHandle(deviceHandle);
+                return;
+            }
+
+            //Enum Characteristics
+            for (int i = 0; i < actual_count; i++) {
+                BTH_LE_GATT_CHARACTERISTIC& gatt_characteristic(gatt_characteristics.get()[i]);
+                if (gatt_characteristic.CharacteristicUuid.Value.LongUuid.Data1 != 0x1717b3c0)
+                    continue;
+                UCHAR valueData[] = { 5,0,0,0, 5,3,0xd9,0,0x1f };
+                BTH_LE_GATT_CHARACTERISTIC_VALUE* charact_v = (PBTH_LE_GATT_CHARACTERISTIC_VALUE)valueData;
+
+                hr = BluetoothGATTSetCharacteristicValue(
+                    deviceHandle, //HANDLE                             hDevice,
+                    &gatt_characteristic,    //PBTH_LE_GATT_CHARACTERISTIC        Characteristic,
+                    charact_v,   //PBTH_LE_GATT_CHARACTERISTIC_VALUE  CharacteristicValue,
+                    NULL,        //BTH_LE_GATT_RELIABLE_WRITE_CONTEXT ReliableWriteContext,
+                    BLUETOOTH_GATT_FLAG_NONE
+                );
+                sprintf(buf, "BluetoothGATTSetCharacteristicValue:%x\n", hr);
+                OutputDebugStringA(buf);
+            }
+        }
+        CloseHandle(deviceHandle);
+    }
     __declspec(dllexport) bool BLEPairToDevice(void *a1) {
+        if(strtoull(glbLastSchwinnPseudoHandle, 0, 10) == reinterpret_cast<uint64_t>(a1))
+            pushSchwinnToGetHeartRate();
         static fptr_bool_ptr real = (fptr_bool_ptr)GetProcAddress(org, "BLEPairToDevice");
         return real(a1);
     }
@@ -766,14 +1028,14 @@ extern "C" {
         static fptr_void_void real = (fptr_void_void)GetProcAddress(org, "BLEInitBLEFlags");
         real();
 #ifdef ENABLE_EDGE_REMOTE
-        const char* edge_id_str = getenv("ZWIFT_EDGE_REMOTE");
-        if (edge_id_str && *edge_id_str) {
+        //const char* edge_id_str = getenv("ZWIFT_EDGE_REMOTE");
+        //if (edge_id_str && *edge_id_str) {
             glbWakeSteeringThread = ::CreateEvent(NULL, false, false, NULL);
-            glbSteeringThread.reset(new std::thread(ExecuteSteeringThread));
-        }
+            glbSteeringThread.reset(new std::thread(ExecuteSteeringThread)); //ему еще слушать клавиатуру и занулять мощность, если Schwinn прекратил крутить
+        //}
 #endif
         const char* dump_file = getenv("ZWIFT_DUMP_SCHWINN");
-        if (dump_file && *dump_file && NULL == glbSchwinnDumpFile) {
+        if (dump_file && *dump_file && *dump_file != '-' && NULL == glbSchwinnDumpFile) {
             glbSchwinnDumpFile = fopen(dump_file, "wt");
             if (glbSchwinnDumpFile) {
                 fprintf(glbSchwinnDumpFile, "ticks,dticks,ddev_t1024,pwr_t,pwr_d,power,resist\n");
@@ -827,23 +1089,39 @@ extern "C" {
     }
     __declspec(dllexport) void BLEStartScanning(void *a1) {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLEStartScanning");
-        char* from = (char*)*(void**)a1;
-        char* to = (char*)*((char**)a1+1);
-        while (from < to) {
-            char serv_length = from[0x10];
-            if (serv_length <= 15 && memcmp(from, "0x1814", 7) == 0) { // беговую дорожку заменим на Schwinn
-                char* schwinn_serv = new_char_zwift(37);
-                memcpy(schwinn_serv, SCHWINN_SERV, 37);
-                memcpy(from, &schwinn_serv, 8);
-                from[0x10] = 36; from[0x18] = 36;
-                char* schwinn_char = new_char_zwift(37);
-                memcpy(schwinn_char, SCHWINN_CHAR, 37);
-                from = (char*)*((char**)from + 4);
-                memcpy(from, &schwinn_char, 8);
-                from[0x10] = 36; from[0x18] = 36;
-                break;
+        const char *use_schwinn = getenv("ZWIFT_DUMP_SCHWINN");
+        if (use_schwinn == nullptr || *use_schwinn != '-') {
+            char* from = (char*)*(void**)a1;
+            char* to = (char*)*((char**)a1 + 1);
+            while (from < to) {
+                char serv_length = from[0x10];
+                /*if (serv_length < 1000) {
+                    char buf[1024] = { 0 };
+                    memcpy(buf, serv_length <= 15 ? from : *(char **)from, serv_length);
+                    buf[serv_length] = '\n';
+                    OutputDebugStringA(buf);
+                }*/
+
+                /*if (serv_length <= 15 && memcmp(from, "0x1814", 7) == 0) { // беговую дорожку заменим на Schwinn
+                    char* schwinn_serv = new_char_zwift(37);
+                    memcpy(schwinn_serv, SCHWINN_SERV, 37);
+                    memcpy(from, &schwinn_serv, 8);
+                    from[0x10] = 36; from[0x18] = 36;
+                    char* schwinn_char = new_char_zwift(37);
+                    memcpy(schwinn_char, SCHWINN_CHAR_EVENT, 37);
+                    char *ptr = (char*)*((char**)from + 4);
+                    memcpy(ptr, &schwinn_char, 8);
+                    ptr[0x10] = 36; ptr[0x18] = 36;
+                } else*/ if (serv_length == 36 && memcmp(*(char**)from, "A026EE07-0A7D-4AB3-97FA-F1500F9FEB8B", 36) == 0) { // жертвуем Wahoo
+                    memcpy(*(char**)from, SCHWINN_SERV, 36);
+                    char** ptr = (char**)*((char**)from + 4);
+                    //OutputDebugStringA(*ptr);
+                    memcpy(*ptr, SCHWINN_CHAR_EVENT, 36);
+                    ptr += 6;
+                    memcpy(*ptr, SCHWINN_CHAR_SRD0, 36);
+                }
+                from += 0x38;
             }
-            from += 0x38;
         }
         return real(a1);
     }
