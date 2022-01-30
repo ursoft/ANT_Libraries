@@ -364,6 +364,28 @@ double CalcPowerNewAlgo(double cad, int resist) {
 extern "C" {
     fptr_void_ptr orgProcessBLEResponse = nullptr;
     void* newCadenceData(const byte *cdata, BleResponsePool &pool) {
+        //время может прийти совсем нехорошее, а потом восстановиться - не будем-ка доверять ему, да еще и усредним
+        //char_value[3] = cdata ? cdata[8] : 0; char_value[4] = cdata ? cdata[9] : 0;
+        const int avg_count = 5; //в секундах
+        static double cranks[avg_count] = {};
+        static DWORD times[avg_count], last_crank_out = 0, last_time = 0;
+        DWORD tick = DWORD((uint64_t)GetTickCount() * 1024 / 1000);
+        static DWORD idx = 0;
+        if (cdata != NULL) {
+            double cur_crank = cdata[3] / 256.0 + cdata[4] + cdata[5] * 256;
+            cranks[idx % avg_count] = cur_crank;
+            times[idx % avg_count] = tick;
+            idx++;
+            if (idx < avg_count) return nullptr;
+            double total_cranks = cur_crank - cranks[idx % avg_count];
+            DWORD total_ticks = tick - times[idx % avg_count];
+            if (total_cranks != 0) {
+                last_time += DWORD(total_ticks / total_cranks + 0.5);
+                last_crank_out++;
+            }
+        } else {
+            //зануляемся, выдавая тот же crank и время
+        }
         char* data = pool.Allocate(0x68);
         memset(data, 0, 0x68);
         data[0] = 2;
@@ -389,14 +411,17 @@ extern "C" {
         char *char_value = pool.Allocate(5);
         char_value[0] = 2; //flags
         //crank revolution #
-        char_value[1] = cdata ? cdata[4] : 0; char_value[2] = cdata ? cdata[5] : 0;
+        char_value[1] = (char)(byte)last_crank_out; char_value[2] = (char)(byte)(last_crank_out >> 8);
         //time
-        char_value[3] = cdata ? cdata[8] : 0; char_value[4] = cdata ? cdata[9] : 0;
+        char_value[3] = (char)(byte)last_time; char_value[4] = (char)(byte)(last_time >> 8);
 
         /*if (cdata) {
             char tmp[100];
-            sprintf(tmp, "crank revolution #=%f, time=%f\n", (unsigned)cdata[3]/256.0 + (unsigned)char_value[1] + (unsigned)char_value[2] * 256, ((unsigned)char_value[3] + (unsigned)char_value[4] * 256) / 1024);
+            sprintf(tmp, "crank revolution #=%.3f, time=%.1f\n", cdata[3]/256.0 + (byte)char_value[1] + (byte)char_value[2] * 256, ((byte)char_value[3] + (byte)char_value[4] * 256) / 1024.0);
             OutputDebugString(tmp);
+        }
+        else {
+            OutputDebugString("crank revolution reset\n");
         }*/
         *(void**)(chars + 0x20) = char_value;
         chars[0x28] = 5;
@@ -418,6 +443,7 @@ extern "C" {
     }
     void doCadence(const byte* cdata);
     static char glbLastSchwinnPseudoHandle[32] = {};
+    static double mLastPower = -1.0;
     static DWORD glbLastSchwinnPowerTick = GetTickCount(), glbStartTicks = glbLastSchwinnPowerTick, glbLastSchwinnPowerIncome = glbLastSchwinnPowerTick;
     bool ParseBLEResponse(void* data) {
         int useful_chunks = 0;
@@ -461,6 +487,7 @@ extern "C" {
                             pushing_const_val[2] = subst_power % 256; // чтобы отличить
                             *(void**)(charact + 0x20) = pushing_const_val;
                             charact[0x28] = 4;
+                            doCadence(NULL);
                         }
                         else {
                             needPowerConversion = true;
@@ -566,11 +593,10 @@ extern "C" {
 #if 1
                         byte* cdata = (byte*)charact_val;
                         static byte oldc = 0xFF;
-                        if (oldc != cdata[4] && cdata[3] == 0) { //иначе zwift нам весь каденс занулит
+                        if (oldc != cdata[4]) { //если 8 раз подать одно значение, zwift нам весь каденс занулит
                             doCadence(cdata);
                             oldc = cdata[4];
                         }
-                        static double mLastPower = -1.0;
                         int tim = cdata[8] | (cdata[9] << 8);
                         static int mLastTime = 0; //в 1024-х долях секунды
 #ifdef OLD_ALGO
@@ -607,7 +633,7 @@ extern "C" {
                             DWORD nowTicks = GetTickCount(), dTicks = nowTicks - glbLastSchwinnPowerTick;
                             glbLastSchwinnPowerIncome = nowTicks;
                             static double oldCranks = -1.0;
-                            double newCranks = cdata[3] / 256 + cdata[4] + cdata[5] * 256;
+                            double newCranks = cdata[3] / 256.0 + cdata[4] + cdata[5] * 256.0;
                             while (newCranks < oldCranks) newCranks += 65536.0;
                             if (oldCranks < 0) {
                                 oldCranks = newCranks; 
@@ -617,13 +643,13 @@ extern "C" {
                                 oldCranks = newCranks;
                                 double powerByTicks = -10000.0, powerByDeviceTime = -10000.0;
                                 glbLastSchwinnPowerTick = nowTicks;
-                                if (dTicks > 0 && dTicks < 2000) {
+                                if (dTicks > 0 && dTicks < 4000) {
                                     double cadenceByTicks = dCranks * 60000.0 / dTicks;
                                     powerByTicks = CalcPowerNewAlgo(cadenceByTicks, cdata[16]);
                                 }
                                 int dTim = tim - mLastTime;
                                 mLastTime = tim;
-                                if (dTim > 0 && dTim < 2000) {
+                                if (dTim > 0 && dTim < 4000) {
                                     double cadenceByDev = dCranks * 61440.0 / dTicks;
                                     powerByDeviceTime = CalcPowerNewAlgo(cadenceByDev, cdata[16]);
                                 }
@@ -680,11 +706,14 @@ extern "C" {
     void doCadence(const byte* cdata) {
         BleResponsePool pool;
         void* data = newCadenceData(cdata, pool);
-        ParseBLEResponse(data);
-        orgProcessBLEResponse(data);
+        if (data) {
+            ParseBLEResponse(data);
+            orgProcessBLEResponse(data);
+        }
     }
 
-    void* nullPowerCadenceData(BleResponsePool &pool) { //only power yet
+    void* nullPowerData(BleResponsePool &pool) { //only power yet
+        mLastPower = -1.0;
         char* data = pool.Allocate(0x68);
         memset(data, 0, 0x68);
         data[0] = 2;
@@ -796,9 +825,9 @@ extern "C" {
     }
     void ExecuteSteeringThread() {
         int counter = 0, counterMax = 20;
-        OutputDebugString("Enter ExecuteSteeringThread");
+        OutputDebugString("Enter ExecuteSteeringThread\n");
         do {
-            bool bSchwinnStopped = (GetTickCount() - glbLastSchwinnPowerIncome > 500 && glbStartTicks != glbLastSchwinnPowerIncome);
+            bool bSchwinnStopped = (int(GetTickCount() - glbLastSchwinnPowerIncome) > 1500 && glbStartTicks != glbLastSchwinnPowerIncome && mLastPower > 0);
             switch (WaitForSingleObject(glbWakeSteeringThread, 50)) {
             case WAIT_TIMEOUT: { //ничего не происходит
                     bool left = (GetKeyState(VK_LEFT) & 0xF000), right = (GetKeyState(VK_RIGHT) & 0xF000);
@@ -816,11 +845,11 @@ extern "C" {
                 }
                 break;
             default: 
-                OutputDebugString("ExecuteSteeringThread. Failed wait and exit");
+                OutputDebugString("ExecuteSteeringThread. Failed wait and exit\n");
                 return; //сбой в системе, уходим
             case WAIT_OBJECT_0: //разбудили - для выхода или работы?
                 if (glbTerminate) {
-                    OutputDebugString("ExecuteSteeringThread. Wake for exit");
+                    OutputDebugString("ExecuteSteeringThread. Wake for exit\n");
                     return;
                 }
                 counterMax = 2;
@@ -832,7 +861,8 @@ extern "C" {
                 if (!glbTerminate) ParseBLEResponse(data);
                 if (!glbTerminate) orgProcessBLEResponse(data);
                 if (!glbTerminate && bSchwinnStopped) {
-                    data = nullPowerCadenceData(pool);
+                    OutputDebugString("ExecuteSteeringThread bSchwinnStopped\n");
+                    data = nullPowerData(pool);
                     if (!glbTerminate) ParseBLEResponse(data);
                     if (!glbTerminate) orgProcessBLEResponse(data);
                     data = newCadenceData(NULL, pool);
@@ -843,7 +873,7 @@ extern "C" {
                     counterMax = 20;
             }
         } while (!glbTerminate);
-        OutputDebugString("Exit ExecuteSteeringThread");
+        OutputDebugString("Exit ExecuteSteeringThread\n");
     }
 
     /*fptr_void_ptr orgOnPairCB = nullptr;

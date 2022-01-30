@@ -104,9 +104,6 @@ BOOL ANT_InitExt(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType_, UCHA
    assert(!bInitialized);         // IF ANT WAS ALREADY INITIALIZED, DO NOT CALL THIS FUNCTION BEFORE CALLING ANT_Close();
 
 
-#ifdef _DEBUG
-   Sleep(5000); //attach debugger
-#endif
 #if defined(DEBUG_FILE)
    DSIDebug::Init();
    DSIDebug::SetDebug(TRUE);
