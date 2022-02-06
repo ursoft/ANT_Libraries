@@ -451,7 +451,7 @@ extern "C" {
         char buf[512] = {}, * bptr = buf;
         uint64_t firstQword = *(uint64_t*)data;
         bptr += sprintf(bptr, "%016llX.%s %s\n", firstQword, byteData + 8, byteData + 0x28);
-        bool bJoystick = !memcmp(byteData + 0x28, "ESP Steer", 9);
+        bool bJoystick = !memcmp(byteData + 0x28, "Schwinn", 7);
         char* service = *(char**)(byteData + 0x50), * end_service = *(char**)(byteData + 0x58);
         while (service < end_service) {
             char len = service[16];
@@ -528,7 +528,7 @@ extern "C" {
                 int charact_len = charact[0x28];
                 for (int i = 0; i < charact_len; i++)
                     bptr += sprintf(bptr, "%02X ", (int)(unsigned char)charact_val[i]);
-                if (bJoystick && charact_len == 4) {
+                if (bJoystick && charact_len == 4 && charact[0]=='0' && charact[1]=='x' && charact[2]=='3' && charact[3]=='4' && charact[4]=='7') { //Steering:347...
                     float steerValue;
                     memcpy(&steerValue, charact_val, 4);
                     if (steerValue == 100.0) {
@@ -640,24 +640,43 @@ extern "C" {
                             }
                             double dCranks = newCranks - oldCranks;
                             if (dCranks > 1.0) {
+                                int reportedResistance = cdata[16];
+                                static int glbActualResistance = 0;
+                                if (reportedResistance) {
+                                    const int averageStepDur = 750; //750ms даём на шаг сопротивления
+                                    if (glbActualResistance == 0) glbActualResistance = reportedResistance;
+                                    else if (reportedResistance != glbActualResistance) {
+                                        static unsigned long glbLastResStep = 0;
+                                        while (nowTicks - glbLastResStep > averageStepDur) {
+                                            glbLastResStep += averageStepDur;
+                                            if (reportedResistance > glbActualResistance) glbActualResistance++;
+                                            else if (reportedResistance < glbActualResistance) glbActualResistance--;
+                                            else {
+                                                glbLastResStep = nowTicks;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
                                 oldCranks = newCranks;
                                 double powerByTicks = -10000.0, powerByDeviceTime = -10000.0;
                                 glbLastSchwinnPowerTick = nowTicks;
                                 if (dTicks > 0 && dTicks < 4000) {
                                     double cadenceByTicks = dCranks * 60000.0 / dTicks;
-                                    powerByTicks = CalcPowerNewAlgo(cadenceByTicks, cdata[16]);
+                                    powerByTicks = CalcPowerNewAlgo(cadenceByTicks, glbActualResistance);
                                 }
                                 int dTim = tim - mLastTime;
                                 mLastTime = tim;
                                 if (dTim > 0 && dTim < 4000) {
                                     double cadenceByDev = dCranks * 61440.0 / dTicks;
-                                    powerByDeviceTime = CalcPowerNewAlgo(cadenceByDev, cdata[16]);
+                                    powerByDeviceTime = CalcPowerNewAlgo(cadenceByDev, glbActualResistance);
                                 }
                                 double deltaPowerByTicks = fabs(powerByTicks - mLastPower), deltaPowerByDev = fabs(powerByDeviceTime - mLastPower);
                                 power = (deltaPowerByDev < deltaPowerByTicks) ? powerByDeviceTime : powerByTicks;
                                 if (glbSchwinnDumpFile) {
-                                    fprintf(glbSchwinnDumpFile, "%d,%d,%d,%f,%f,%f,%d\n", nowTicks - glbStartTicks,
-                                        dTicks, dTim, powerByTicks, powerByDeviceTime, power, cdata[16]);
+                                    fprintf(glbSchwinnDumpFile, "%d,%d,%d,%f,%f,%f,%d,%d\n", nowTicks - glbStartTicks,
+                                        dTicks, dTim, powerByTicks, powerByDeviceTime, power, reportedResistance, glbActualResistance);
                                     fflush(glbSchwinnDumpFile);
                                 }
                             }
@@ -1068,7 +1087,7 @@ extern "C" {
         if (dump_file && *dump_file && *dump_file != '-' && NULL == glbSchwinnDumpFile) {
             glbSchwinnDumpFile = fopen(dump_file, "wt");
             if (glbSchwinnDumpFile) {
-                fprintf(glbSchwinnDumpFile, "ticks,dticks,ddev_t1024,pwr_t,pwr_d,power,resist\n");
+                fprintf(glbSchwinnDumpFile, "ticks,dticks,ddev_t1024,pwr_t,pwr_d,power,rep_resist,act_resist\n");
                 fflush(glbSchwinnDumpFile);
             }
         }
