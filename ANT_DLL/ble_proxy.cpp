@@ -12,6 +12,7 @@
 #include <BthLEDef.h>
 #include <SetupAPI.h>
 
+bool glbNoSchwinn = true;
 const char *SCHWINN_SERV = "3bf58980-3a2f-11e6-9011-0002a5d5c51b";
 GUID GUID_BLUETOOTHLE_SCHWINN_SERV = { 0x3bf58980, 0x3a2f, 0x11e6, {0x90, 0x11, 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b} };
 const char *SCHWINN_CHAR_EVENT = "5c7d82a0-9803-11e3-8a6c-0002a5d5c51b";
@@ -528,7 +529,7 @@ extern "C" {
                 int charact_len = charact[0x28];
                 for (int i = 0; i < charact_len; i++)
                     bptr += sprintf(bptr, "%02X ", (int)(unsigned char)charact_val[i]);
-                if (bJoystick && charact_len == 4 && charact[0]=='0' && charact[1]=='x' && charact[2]=='3' && charact[3]=='4' && charact[4]=='7') { //Steering:347...
+                if (bJoystick && !glbNoSchwinn && charact_len == 4 && charact[0]=='0' && charact[1]=='x' && charact[2]=='3' && charact[3]=='4' && charact[4]=='7') { //Steering:347...
                     float steerValue;
                     memcpy(&steerValue, charact_val, 4);
                     if (steerValue == 100.0) {
@@ -1140,6 +1141,7 @@ extern "C" {
         static fptr_void_ptr real = (fptr_void_ptr)GetProcAddress(org, "BLEStartScanning");
         const char *use_schwinn = getenv("ZWIFT_DUMP_SCHWINN");
         if (use_schwinn == nullptr || *use_schwinn != '-') {
+            glbNoSchwinn = false;
             char* from = (char*)*(void**)a1;
             char* to = (char*)*((char**)a1 + 1);
             while (from < to) {
