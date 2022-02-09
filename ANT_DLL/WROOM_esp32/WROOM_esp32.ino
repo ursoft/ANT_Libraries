@@ -1,5 +1,7 @@
 //по мотивам https://raw.githubusercontent.com/matandoocorpo/Zwift-Steer/main/steerer.ino
 //Сборка в Platformio: не работает ADC, читает MAX (конфликт с BLE)
+//https://randomnerdtutorials.com/esp32-built-in-oled-ssd1306/ - тут пины можно подсмотреть
+//c симуляцией мембранной клавиатуры помогли на форуме http://arduino.ru/forum/apparatnye-voprosy/programmnaya-simulyatsiya-nazhatiya-knopki-membrannoi-klaviatury
 //#define DEBUG
 #include "common.h"
 
@@ -46,7 +48,7 @@ public:
 volatile uint8_t glbCurResist = 0;
 
 class SchwinnResistButton { //resistance control - up and down
-  const int m_inPin, m_outPin; // с какого пина на какой транслировать меандр выборки
+  const int m_outPin; // какой пин командует оптопарой
   const char *m_name;
   TaskHandle_t m_taskHandle;
   static void task(void *p) {
@@ -54,61 +56,28 @@ class SchwinnResistButton { //resistance control - up and down
     while(true) {
       vTaskSuspend(NULL);
       uint8_t startResist = glbCurResist;
-      int cnt = 0;
-      //1. timeout or wait for 0
-      int d;
       unsigned long start = millis();
-      while ((d = digitalRead(self->m_inPin)) == HIGH) {
-        if (millis() - start > 500) {
-          pinMode(self->m_outPin, OUTPUT);
-          digitalWrite(self->m_outPin, LOW);
-          pinMode(self->m_outPin, INPUT);
-          debugPrint("TimeoutHI @%d", self->m_inPin);
-          break;
-        }
-        delay(1);
+      digitalWrite(self->m_outPin, HIGH);
+      while (millis() - start < 500 && startResist == glbCurResist) {
+        delay(10);
       }
-      if (d == HIGH) break;
-      while(cnt++ < 5 && startResist == glbCurResist) {
-        //2. timeout or wait for 1
-        start = millis();
-        while((d = digitalRead(self->m_inPin)) == LOW) {
-          if (millis() - start > 100) {
-            debugPrint("TimeoutLOW @%d", self->m_inPin);
-            break;
-          }
-        }
-        if (d == LOW) break;
-        //3. 9ms of HIGH
-        pinMode(self->m_outPin, OUTPUT);
-        digitalWrite(self->m_outPin, HIGH);
-        delayMicroseconds(8000);
-        //digitalWrite(self->m_outPin, LOW);
-        pinMode(self->m_outPin, INPUT_PULLDOWN);
-        debugPrint("done %d, c=%d, r=%d", self->m_inPin, cnt, int(glbCurResist));
-      }
+      digitalWrite(self->m_outPin, LOW);
     }
   }
 
 public:
-  SchwinnResistButton(const char *name, int inPin, int outPin) : m_inPin(inPin), m_outPin(outPin), m_name(name) {}  
+  SchwinnResistButton(const char *name, int outPin) : m_outPin(outPin), m_name(name) {}  
   void begin() {
-    pinMode(m_inPin, INPUT); 
-    pinMode(m_outPin, INPUT_PULLDOWN);
+    pinMode(m_outPin, OUTPUT);
     xTaskCreatePinnedToCore(task, m_name, 2000, this, configMAX_PRIORITIES - 1, &m_taskHandle, 1);
-
   }
   void activate() {
-    debugPrint("activated %d", m_inPin);
+    debugPrint("activated %d", m_outPin);
     vTaskResume(m_taskHandle);
     const char *s[CHUNKS] = {}; s[4] = m_name;
     display.update(s); //сохранить последнее на экране
   }
-} resistUpBtn("UP", 15, 2), resistDnBtn("DN", 39, 16);
-
-void smartDelay(int ms) {
-  ::delay(ms);
-}
+} resistUpBtn("UP", 15), resistDnBtn("DN", 16);
 
 class Joystick { //steering, manual resistance and PC mouse control
   enum Setup { ZeroBounce = 40 /* дребезг около начального значения */, MaxSteerAngle = 35 };
@@ -306,7 +275,7 @@ struct EspSmartBike {
     display.update(s);
     BLEClient *pClient = BLEDevice::createClient();
     while(!pClient->connect(m_schwinnAddr)) {
-      ::delay(500);
+      delay(500);
       s[2] = arr[(iter++) & 1];
       display.update(s);
     }
@@ -452,18 +421,18 @@ struct EspSmartBike {
     connectToSchwinn();
 #endif
   }
-  void doHR(unsigned long nowHr) {
+  void doHR(unsigned long nowTime) {
     static uint8_t heart[2] = {0, 0};
-    static unsigned long lastHr = nowHr;
+    static unsigned long lastHr = nowTime;
     static uint8_t hrRev = 0;
-    if (nowHr - lastHr > 500) {
+    if (nowTime - lastHr > 500) {
 #ifdef SIMULATE_SCHWINN
-      m_heartRateCache = 78 + ((nowHr / 1000) % 5);
+      m_heartRateCache = 78 + ((nowTime / 1000) % 5);
 #else
       if (m_heartRate.HasNew(&hrRev, &m_heartRateCache))
 #endif //SIMULATE_SCHWINN
       {
-        lastHr = nowHr;
+        lastHr = nowTime;
         heart[1] = m_heartRateCache;
 #ifdef EXCLUSIVE_HEART
         m_hrmChar.setValue(heart, sizeof(heart));
@@ -485,7 +454,7 @@ struct EspSmartBike {
       m_pSteerTxChar->setValue(authSuccess, sizeof(authSuccess));
       m_pSteerTxChar->indicate();
       m_steeringAuthenticated = true;
-      smartDelay(250);
+      delay(250);
     }
     if (nowTime - lastPackedAngleTxTime < 30) return;
     if (joystick.packedAngle(&packedAngle)) {
@@ -550,11 +519,11 @@ struct EspSmartBike {
       return ret > 0.0 ? ret : 0.0;
   }
   CrankInfo m_crankInfoCache;
-  void doPowerMeter(unsigned long millis_cache) {
+  void doPowerMeter(unsigned long nowTime) {
     static uint8_t pow[4] = {}, cad[5] = {2 /*flags*/ };
 #ifdef SIMULATE_SCHWINN
-    m_lastPower = 123 - ((millis_cache / 1000) % 5);
-    m_avgCadence2x = 180 + ((millis_cache / 1000) % 5);
+    m_lastPower = 123 - ((nowTime / 1000) % 5);
+    m_avgCadence2x = 180 + ((nowTime / 1000) % 5);
     int pwr = (int)(m_lastPower + 0.5);
     pow[2] = (byte)(pwr & 0xFF);
     pow[3] = (byte)((pwr >> 8) & 0xFF);
@@ -565,8 +534,8 @@ struct EspSmartBike {
 #ifdef EXCLUSIVE_CADENCE
     static uint16_t cr = 0;
     static unsigned long lastOut = 0;
-    if (millis_cache - lastOut > 1000) {
-      lastOut = millis_cache;
+    if (nowTime - lastOut > 1000) {
+      lastOut = nowTime;
       cr++;
       //crank revolution #
       cad[1] = (byte)cr; cad[2] = (byte)(cr >> 8);
@@ -586,26 +555,26 @@ struct EspSmartBike {
         if (m_actualResistance == 0) m_actualResistance = m_crankInfoCache.m_reportedResistance;        
         else if (m_crankInfoCache.m_reportedResistance != m_actualResistance) { 
           static unsigned long glbLastResStep = 0;
-          while(millis_cache - glbLastResStep > averageStepDur) {
+          while(nowTime - glbLastResStep > averageStepDur) {
             glbLastResStep += averageStepDur;
             if (m_crankInfoCache.m_reportedResistance > m_actualResistance) m_actualResistance++;
             else if (m_crankInfoCache.m_reportedResistance < m_actualResistance ) m_actualResistance--;
             else {
-              glbLastResStep = millis_cache;
+              glbLastResStep = nowTime;
               break;
             }
           }
         }
       }
       static uint8_t oldc = 0xFF;
-      bool bSchwinnStopped = (int(millis_cache - m_crankInfoCache.m_curSchwinnPowerIncomeTm) > 2000);
+      bool bSchwinnStopped = (int(nowTime - m_crankInfoCache.m_curSchwinnPowerIncomeTm) > 2000);
       if (oldc != m_crankInfoCache.m_cranks[1] || bSchwinnStopped) do { //если 8 раз подать одно значение, zwift нам весь каденс занулит
         oldc = m_crankInfoCache.m_cranks[1];
         //время может прийти совсем нехорошее, а потом восстановиться - не будем-ка доверять ему, да еще и усредним
         const int avg_count = 5; //в секундах
         static double cranks[avg_count] = {};
         static unsigned long times[avg_count], last_crank_out = 0, last_time = 0;
-        unsigned long tick = millis_cache * 1024 / 1000;
+        unsigned long tick = nowTime * 1024 / 1000;
         static uint8_t idx = 0;
         if (!bSchwinnStopped) {
           double cur_crank = m_crankInfoCache.m_cranks[0] / 256.0 + m_crankInfoCache.m_cranks[1] + m_crankInfoCache.m_cranks[2] * 256;
@@ -625,7 +594,7 @@ struct EspSmartBike {
         } else {
           m_avgCadence2x = 0;
           //зануляемся, выдавая тот же crank и время
-          debugPrint("cadence bSchwinnStopped: m=%d, mc=%d, in=%d", (int)millis(), (int)millis_cache, (int)m_crankInfoCache.m_curSchwinnPowerIncomeTm);
+          debugPrint("cadence bSchwinnStopped: m=%d, mc=%d, in=%d", (int)millis(), (int)nowTime, (int)m_crankInfoCache.m_curSchwinnPowerIncomeTm);
         }
         //crank revolution #
         cad[1] = (byte)last_crank_out; cad[2] = (byte)(last_crank_out >> 8);
@@ -640,7 +609,7 @@ struct EspSmartBike {
       double power = 0; //schwinn stopped
       if (!bSchwinnStopped) {
         power =  m_lastPower;
-        static unsigned long glbLastSchwinnPowerIncome = millis_cache;
+        static unsigned long glbLastSchwinnPowerIncome = nowTime;
         static double oldCranks = -1.0;
         double newCranks = m_crankInfoCache.m_cranks[0] / 256.0 + m_crankInfoCache.m_cranks[1] + m_crankInfoCache.m_cranks[2] * 256.0;
         while (newCranks < oldCranks) newCranks += 65536.0;
@@ -772,19 +741,17 @@ struct EspSmartBike {
     }
   }
   void main() {
-    smartDelay(1);
-    unsigned long nowTime = millis();
-    doSteering(nowTime); smartDelay(1);
-    doHR(nowTime + 1); smartDelay(1);
-    doPowerMeter(nowTime + 2); smartDelay(1);
-    doFTMS(nowTime + 3);
+    doSteering(millis());
+    doHR(millis());
+    doPowerMeter(millis());
+    doFTMS(millis());
   }
   void loop() {
     if (m_connectedToConsumer)
       main();
     if (!m_connectedToConsumer && m_prevConnectedToConsumer) {
       debugPrint("Nothing connected, start advertising (delay 300)");
-      smartDelay(300); // give the bluetooth stack the chance to get things ready
+      delay(300); // give the bluetooth stack the chance to get things ready
       BLEDevice::startAdvertising(); // [re]start advertising
       m_prevConnectedToConsumer = false;
       const char *s[CHUNKS] = {}; s[0] = "ReconGC...";
