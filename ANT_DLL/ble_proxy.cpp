@@ -132,6 +132,7 @@ void PatchMainModule(const char* name, // "Trial.01",
     if (0 == VirtualQuery(base, &mbi, sizeof(mbi))) {
         sprintf(buf, "ZWIFT_PATCH.%s VirtualQuery failed\n", name);
         OutputDebugString(buf);
+        ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
         return;
     }
     MEMORY_BASIC_INFORMATION mbi2 = {};
@@ -150,6 +151,7 @@ void PatchMainModule(const char* name, // "Trial.01",
             } else {
                 sprintf(buf, "ZWIFT_PATCH.%s multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
+                ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
             }
         }
@@ -162,9 +164,11 @@ void PatchMainModule(const char* name, // "Trial.01",
         VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, oldProtect, &oldProtect);
         sprintf(buf, "ZWIFT_PATCH.%s WriteProcessMemory=%d\n", name, ok);
         OutputDebugString(buf);
+        if(!ok) ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
     } else {
         sprintf(buf, "ZWIFT_PATCH.%s not found in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
         OutputDebugString(buf);
+        ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
     }
 }
 
@@ -229,6 +233,7 @@ void PatchMainModuleNeo(const char* name,
     if (0 == VirtualQuery(base, &mbi, sizeof(mbi))) {
         sprintf(buf, "ZWIFT_PATCH.%s VirtualQuery failed\n", name);
         OutputDebugString(buf);
+        ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
         return;
     }
     MEMORY_BASIC_INFORMATION mbi2 = {};
@@ -255,6 +260,7 @@ void PatchMainModuleNeo(const char* name,
                 }
                 sprintf(buf, "ZWIFT_PATCH.%s 0xd2 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
+                ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
             case 0xc0:
                 if (foundAt1 == NULL) {
@@ -263,10 +269,12 @@ void PatchMainModuleNeo(const char* name,
                 }
                 sprintf(buf, "ZWIFT_PATCH.%s 0xc0 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
+                ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
             default:
                 sprintf(buf, "ZWIFT_PATCH.%s unkfound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
+                ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
             }
         }
@@ -278,13 +286,16 @@ void PatchMainModuleNeo(const char* name,
         int fp_cnt = TryFloatPatch(foundAt1, search1, repl1, search2, repl2);
         sprintf(buf, "ZWIFT_PATCH.%s TryFloatPatch1=%d/2\n", name, fp_cnt);
         OutputDebugString(buf);
+        if(fp_cnt != 2) ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
         fp_cnt = TryFloatPatch(foundAt2, search1, repl1, search2, repl2);
         sprintf(buf, "ZWIFT_PATCH.%s TryFloatPatch2=%d/2\n", name, fp_cnt);
         OutputDebugString(buf);
+        if (fp_cnt != 2) ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
         VirtualProtectEx(GetCurrentProcess(), mbi.BaseAddress, textLength, oldProtect, &oldProtect);
     } else {
         sprintf(buf, "ZWIFT_PATCH.%s both not found in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
         OutputDebugString(buf);
+        ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
     }
 }
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
@@ -529,13 +540,17 @@ extern "C" {
                 int charact_len = charact[0x28];
                 for (int i = 0; i < charact_len; i++)
                     bptr += sprintf(bptr, "%02X ", (int)(unsigned char)charact_val[i]);
-                if (bJoystick && !glbNoSchwinn && charact_len == 4 && charact[0]=='0' && charact[1]=='x' && charact[2]=='3' && charact[3]=='4' && charact[4]=='7') { //Steering:347...
+                if (bJoystick && !glbNoSchwinn && (GetKeyState(VK_CAPITAL) & 0x0001) == 0 /*caps to turn off drifting mouse*/ &&
+                    charact_len == 4 && charact[0]=='0' && charact[1]=='x' && charact[2]=='3' && charact[3]=='4' && charact[4]=='7') { //Steering:347...
                     float steerValue;
                     memcpy(&steerValue, charact_val, 4);
-                    if (steerValue == 100.0) {
+                    if (steerValue == 0.001) {
                         mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
                     } else {
                         useful_chunks++;
+                        if (fabs(steerValue) * 100 - float(int(fabs(steerValue) * 100)) > 0.09) { //тысячная - нажатие кнопки
+                            mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                        }
                         // квадрант4: 35.35 -> xVal=35, yVal=0.35
                         // квадрант3: -35 + 0.35 = -34.65 -> xVal=-34, yVal=-0.65
                         // квадрант2: -35 - 0.35 = -35.35 -> xVal=-35, yVal=-0.35

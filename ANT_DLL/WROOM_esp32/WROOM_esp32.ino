@@ -83,10 +83,10 @@ class Joystick { //steering, manual resistance and PC mouse control
   enum Setup { ZeroBounce = 40 /* дребезг около начального значения */, MaxSteerAngle = 35 };
   int m_adcNullX, m_adcNullY; //Joystick Calibration
 public:
-  enum Pins { Yaxis = 12, Button = 13, Xaxis = 14 };
+  enum Pins { Yaxis = 12, Button = 0, Xaxis = 14 };
   Joystick() : m_adcNullX(0), m_adcNullY(0) {}
   void begin() {
-    pinMode(Pins::Xaxis, INPUT); pinMode(Pins::Button, INPUT); pinMode(Pins::Xaxis, INPUT);
+    pinMode(Pins::Xaxis, INPUT); pinMode(Pins::Button, INPUT_PULLUP); pinMode(Pins::Xaxis, INPUT);
     m_adcNullX = analogRead(Pins::Xaxis);
     if (m_adcNullX <= 0 || m_adcNullX == MAX_ADC_VAL) {
       m_adcNullX = (MAX_ADC_VAL + 1) / 2;
@@ -118,8 +118,9 @@ public:
   bool packedAngle(float *pVal) { //лишнего поля в протоколе steering нет, поэтому хитро пакуем 2 угла и кнопку в одно число
     float angle = 0.0;
     float angleX = 0.0; if (!readAngle(Pins::Xaxis, &angleX)) return false;
-    angleX = int(angleX);
+    angleX = -int(angleX);
     float angleY = 0.0; if (!readAngle(Pins::Yaxis, &angleY)) return false;
+    angleY = -int(angleY);
     bool buttonJoy = (analogRead(Pins::Button) == 0);
     static int buttonPressCount = 0;
     if (buttonJoy) {
@@ -139,8 +140,8 @@ public:
     } else if (angleX < 0 || angleY != 0) {
       angle = angleX + angleY / 100.0;
     }
-    if (buttonJoy && fabs(angleX) < MaxSteerAngle/3 && fabs(angleY) < MaxSteerAngle/3) {
-      angle = 100.0; //button pressed
+    if (buttonJoy) {
+      if(angle >= 0.0) angle += 0.001; else angle -= 0.001;
     }
     *pVal = angle;
     return true;
@@ -468,12 +469,12 @@ struct EspSmartBike {
       static char last_tick_char = tick_char;
       if (packedAngle != lastPackedAngle || last_tick_char != tick_char) {
         lastPackedAngle = packedAngle;
-        char dispSteer[16]; //+100.00
-        sprintf(dispSteer, "%+07.2f", packedAngle);
+        char dispSteer[16]; //100.001
+        sprintf(dispSteer, "%+07.3f", packedAngle);
         if (dispSteer[0] == '+') dispSteer[0] = '0'; // а то разная ширина
         if (dispSteer[0] == '-') dispSteer[0] = '1';
         //debugPrint(dispSteer);
-        dispSteer[4] = tick_char;
+        dispSteer[3] = tick_char;
         last_tick_char = tick_char;
         static unsigned long lastDisplayUpdate = nowTime;
         if (nowTime - lastDisplayUpdate > 250) {
