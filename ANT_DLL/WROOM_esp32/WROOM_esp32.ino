@@ -2,6 +2,21 @@
 //Сборка в Platformio: не работает ADC, читает MAX (конфликт с BLE)
 //https://randomnerdtutorials.com/esp32-built-in-oled-ssd1306/ - тут пины можно подсмотреть
 //c симуляцией мембранной клавиатуры помогли на форуме http://arduino.ru/forum/apparatnye-voprosy/programmnaya-simulyatsiya-nazhatiya-knopki-membrannoi-klaviatury
+//Резистор у светодиода оптопары: 5кОм
+//Резистор у оптопары на черном проводе (без него штатные кнопки Schwinn не срабатывают - видимо, просаживается уровень): 10кОм
+//Список пинов разъёма джойстика (начинается снизу разъёма):
+// - 1. GND
+// - 2. 5V (хватает трех)
+// - 3. Х
+// - 4. У
+// - кнопка (0: нажата)
+//Список пинов разъёма изделия (начинается с желтого, снизу)
+// - 1. Принимающий импульс кнопки "вверх"
+// - 2. Задающий импульс кнопки "вверх"
+// - 3. Принимающий импульс кнопки "вниз"
+// - 4. Земля
+// - 5. Задающий импульс кнопки "вниз"
+// - 6. 9 вольт
 //#define DEBUG
 #include "common.h"
 
@@ -77,7 +92,7 @@ public:
     const char *s[CHUNKS] = {}; s[4] = m_name;
     display.update(s); //сохранить последнее на экране
   }
-} resistUpBtn("UP", 15), resistDnBtn("DN", 16);
+} resistUpBtn("UP", 16), resistDnBtn("DN", 15);
 
 class Joystick { //steering, manual resistance and PC mouse control
   enum Setup { ZeroBounce = 40 /* дребезг около начального значения */, MaxSteerAngle = 35 };
