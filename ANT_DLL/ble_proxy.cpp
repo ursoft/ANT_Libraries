@@ -298,34 +298,39 @@ void PatchMainModuleNeo(const char* name,
         ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
     }
 }
+INT_PTR OnAttach() {
+    const char* patches_str = getenv("ZWIFT_PATCHES");
+    if (patches_str == NULL || *patches_str == '1') {
+        PatchMainModule(
+            "Trial.01", 10,
+            "\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
+            "\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+        );
+        PatchMainModule(
+            "Trial.02", 8,
+            "\x48\x8d\x4d\x9f\x41\x83\xcf\x08",
+            "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+        );
+        PatchMainModule(
+            "Trial.03", 8,
+            "\x48\x8d\x4d\x9f\x41\x83\xcf\x10",
+            "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+        );
+        PatchMainModule(
+            "Trial.04", 10,
+            "\xbb\x01\x0\x0\x0\xe9\x80\x0\x0\x0",
+            "\xbb\x03\x0\x0\x0\xe9\x80\x0\x0\x0"
+        );
+        PatchMainModuleNeo("Neo80,100->20,80", 100.0, 80.0, 20.0, 60.0);
+    }
+    return 0;
+}
+FARPROC ptr = OnAttach;
 bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
 {
     switch (fdwReason)     {
-    case DLL_PROCESS_ATTACH: {
-        const char* patches_str = getenv("ZWIFT_PATCHES");
-        if (patches_str && *patches_str == '1') {
-            PatchMainModule(
-                "Trial.01", 10,
-                "\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
-                "\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
-            );
-            PatchMainModule(
-                "Trial.02", 8,
-                "\x48\x8d\x4d\x9f\x41\x83\xcf\x08",
-                "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
-            );
-            PatchMainModule(
-                "Trial.03", 8,
-                "\x48\x8d\x4d\x9f\x41\x83\xcf\x10",
-                "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
-            );
-            PatchMainModule(
-                "Trial.04", 10,
-                "\xbb\x01\x0\x0\x0\xe9\x80\x0\x0\x0",
-                "\xbb\x03\x0\x0\x0\xe9\x80\x0\x0\x0"
-            );
-            PatchMainModuleNeo("Neo80,100->20,80", 100.0, 80.0, 20.0, 60.0);
-        }}
+    case DLL_PROCESS_ATTACH:
+        if(ptr) (*ptr)();
         break;
     case DLL_PROCESS_DETACH:
         glbTerminate = true;
@@ -342,31 +347,31 @@ bool WINAPI DllMain(HINSTANCE hDll, DWORD fdwReason, LPVOID lpvReserved)
 }
 double CalcPowerNewAlgo(double cad, int resist) {
     static const double coeffs[25][3] = { //from Excel trends
-        { -0.0005, 0.6451, -11.599 },
-        { 0.0004, 0.773, -12.325 },
-        { 0,      1.0186, -17.566 },
-        { 0.0008, 1.0256, -16.83 },
-        { 0.0049, 0.85, -10.95 },
-        { 0.0012, 1.549, -30.093 },
-        { 0.0018, 1.7378, -35.606 },
-        { 0.0048, 1.5708, -28.509 },
-        { 0.0055, 1.6728, -29.06 },
-        { 0.007, 1.8186, -31.254 },
-        { -0.002, 3.1643, -71.208 },
-        { 0.0046, 2.707, -48.821 },
-        { 0.0014, 3.5323, -72.418 },
-        { 0.0074, 2.8258, -51.258 },
-        { 0.0037, 3.7922, -72.192 },
-        { 0.0059, 3.7542, -69.219 },
-        { 0.0046, 4.0031, -73.953 },
-        { 0.0281, 2.3647, -33.012 },
-        { 0.0175, 3.1842, -53.739 },
-        { 0.0047, 4.5335, -75.077 },
-        { 0.0428, 1.7454, -14.955 },
-        { 0.0191, 4.044, -61.586 },
-        { 0.0518, 2.0345, -18.703 },
-        { 0.0325, 3.5994, -44.863 },
-        { -0.006, 7.7179, -128.45 }
+        {-0.0014, 0.7920, -13.985 },
+        {-0.0004, 0.9991, -19.051 },
+        { 0.0015, 0.9179, -13.745 },
+        { 0.0040, 0.9857, -13.095 },
+        { 0.0027, 1.3958, -22.741 },
+        { 0.0057, 1.1586, -15.126 },
+        {-0.0013, 2.4666, -49.052 },
+        { 0.0002, 2.6349, -52.390 },
+        { 0.0034, 2.6240, -48.072 },
+        { 0.0147, 1.6372, -19.653 },
+        { 0.0062, 2.5851, -43.254 },
+        { 0.0064, 3.2864, -59.336 },
+        { 0.0048, 3.6734, -69.245 },
+        { 0.0184, 2.1842, -28.936 },
+        { 0.0052, 4.3939, -78.603 },
+        { 0.0094, 3.8871, -65.982 },
+        { 0.0165, 3.3074, -49.906 },
+        { 0.0251, 3.2956, -44.436 },
+        { 0.0281, 2.9107, -38.767 },
+        { 0.0311, 2.9435, -35.851 },
+        { 0.0141, 5.5646, -88.686 },
+        { 0.0517, 1.8361, -13.777 },
+        { 0.0467, 2.9273, -35.908 },
+        { 0.0429, 4.1821, -50.141 },
+        { 0.0652, 3.6670, -46.863 }
     };
     int idx = (resist - 1) % 25;
     double ret = coeffs[idx][0] * cad * cad + coeffs[idx][1] * cad + coeffs[idx][2];
