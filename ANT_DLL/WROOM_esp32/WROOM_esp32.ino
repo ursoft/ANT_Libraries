@@ -380,7 +380,7 @@ struct EspSmartBike {
     #define fitnessMachineService BLEUUID((uint16_t)0x1826)
     const std::string fitnessData = { 0b00000001, 0b00100000, 0b00000000 };  // advertising data on "Service Data AD Type" - byte of flags (little endian) and two for Fitness Machine Type (little endian) indoor bike supported
     BLEAdvertisementData ftmsAdvertisementData;
-    ftmsAdvertisementData.setServiceData(fitnessMachineService, fitnessData);  // already includdes Service Data AD Type ID and Fitness Machine Service UUID with fitnessData 6 bytes
+    ftmsAdvertisementData.setServiceData(fitnessMachineService, fitnessData);  // already includes Service Data AD Type ID and Fitness Machine Service UUID with fitnessData 6 bytes
     BLEService *pFitnessService = m_pBleServer->createService(fitnessMachineService);
     pFitnessService->addCharacteristic(&m_indoorBikeDataCharacteristic);
     m_indoorBikeDataCharacteristic.addDescriptor(new BLE2902());
