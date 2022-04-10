@@ -97,11 +97,11 @@ namespace WindowsFormsApp1 {
         int old_cad = -1, old_pwr = -1, old_hr = -1;
         private void Chars_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args) {
             using (var dataReader = Windows.Storage.Streams.DataReader.FromBuffer(args.CharacteristicValue)) {
-                byte[] packet = new byte[7];
+                byte[] packet = new byte[args.CharacteristicValue.Length];
                 dataReader.ReadBytes(packet);
                 var cad = (int)packet[2] + (int)packet[3] * 256;
                 var pwr = (int)packet[4] + (int)packet[5] * 256;
-                var hr = (int)packet[6];
+                var hr = args.CharacteristicValue.Length == 7 ? (int)packet[6] : -1;
                 Log(string.Format("Notification: cad={0}, pwr={1}, hr={2}", cad, pwr, hr));
                 if(cad != old_cad) { Log(cadence, string.Format("{0:00.0} rpm", cad/2.0)); old_cad = cad; }
                 if(pwr != old_pwr) { Log(power, string.Format("{0} W", pwr)); old_pwr = pwr; }

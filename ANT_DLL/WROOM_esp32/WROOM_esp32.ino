@@ -169,7 +169,7 @@ void schwinnSdr0NotifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic
 struct ResistanceManager {
   ResistanceManager() : m_lastGrade(0), m_goalGrade(0), m_goalResist(0), m_goalPower(0), m_curPower(0), m_state(IDLE) {}
   int m_lastGrade, m_goalGrade;
-  void GoalGrade(int newGrade) { //каждые 50 единиц - смена уровня
+  void GoalGrade(int newGrade, bool bStopped) { //каждые 50 единиц - смена уровня
     switch(m_state) {
       case RESISTANCE:
       case POWER:
@@ -181,21 +181,21 @@ struct ResistanceManager {
         m_goalGrade = newGrade;
         break;
     }
-    doTick();
+    if(!bStopped) doTick();
   }
   int m_goalResist;
-  void GoalResistance(int newResistance) { //сам уровень
+  void GoalResistance(int newResistance, bool bStopped) { //сам уровень
     m_goalResist = newResistance;
     if (m_goalResist < 1) m_goalResist = 1;
     if (m_goalResist > 25) m_goalResist = 25;
     m_state = RESISTANCE;
-    doTick();
+    if(!bStopped) doTick();
   }
   int m_goalPower, m_curPower;
-  void GoalPower(int newPower) {           //мощность
+  void GoalPower(int newPower, bool bStopped) {           //мощность
     m_goalPower = newPower;
     m_state = POWER;
-    doTick();
+    if(!bStopped) doTick();
   }
   enum States { IDLE, GRADE, RESISTANCE, POWER } m_state;
   void doTick() {
@@ -206,8 +206,8 @@ struct ResistanceManager {
         else m_state = IDLE;
         break;
       case POWER:
-        if (m_goalPower > 1.2 * m_curPower) resistUpBtn.activate();
-        else if (m_curPower > 1.2 * m_goalPower) resistDnBtn.activate();
+        if (m_goalPower > 20 + m_curPower) resistUpBtn.activate();
+        else if (m_curPower > 20 + m_goalPower) resistDnBtn.activate();
         break;
       case IDLE:
         break;
@@ -227,8 +227,25 @@ struct ResistanceManager {
   }
 } resistMng;
 
+struct SteeringControlCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  BLECharacteristic *m_pTx;
+  SteeringControlCharacteristicCallbacks(BLECharacteristic *pTx) : m_pTx(pTx) {}
+  void onRead(BLECharacteristic *pRx) {}
+  void onWrite(BLECharacteristic *pRx) {
+    std::string rxValue = pRx->getValue();
+    uint8_t authSuccess[] = {0x03, 0x11, 0xff};        
+    if(rxValue.length() == 4) {
+      delay(250);
+      m_pTx->setValue(authSuccess, sizeof(authSuccess));
+      m_pTx->indicate();
+      /*auth = true;*/
+      debugPrint("SteeringControlCharacteristicCallbacks.onWrite auth success!");
+    }
+  }
+};
+
 struct EspSmartBike {
-  EspSmartBike() : m_pBleServer(NULL), m_pSteerAngleChar(NULL), m_pSteerTxChar(NULL), 
+  EspSmartBike() : m_pBleServer(NULL), m_pSteerAngleChar(NULL), m_pSteerTxChar(NULL), m_pSteerRxChar(NULL),
     m_hrmChar(BLEUUID((uint16_t)0x2A37), BLECharacteristic::PROPERTY_NOTIFY),
     m_spCadChar(BLEUUID((uint16_t)0x2A5B), BLECharacteristic::PROPERTY_NOTIFY),
     m_powChar(BLEUUID((uint16_t)0x2A63), BLECharacteristic::PROPERTY_NOTIFY),
@@ -247,7 +264,7 @@ struct EspSmartBike {
     m_resistanceSet(4), m_powerSet(100), m_grade(0), m_ctrlQueue(NULL) {}
   BLEServer *m_pBleServer;
   BLECharacteristic *m_pSteerAngleChar;
-  BLECharacteristic *m_pSteerTxChar;
+  BLECharacteristic *m_pSteerTxChar, *m_pSteerRxChar;
   BLECharacteristic m_hrmChar, m_spCadChar, m_powChar;
   BLERemoteCharacteristic *m_schwinnEventRecordChar, *m_schwinnSdr0Char;
   BLEAddress m_schwinnAddr;
@@ -261,7 +278,7 @@ struct EspSmartBike {
   const int16_t m_minPowInc = 1;
   const int16_t m_maxResLev = 25; // resistance level range settings, no app cares about this
   const uint16_t m_indoorBikeDataCharacteristicDef = 0b0000001001000101; // flags for indoor bike data characteristics - no more data, power and cadence (inst), hr
-  const uint32_t m_fitnessMachineFeaturesCharacteristicsDef = 0b00000000000000000100000010000010; // flags for Fitness Machine Features Field - cadence, resistance level and inclination level
+  const uint32_t m_fitnessMachineFeaturesCharacteristicsDef = 0b00000000000000000100010010001010; // flags for Fitness Machine Features Field - cadence, inclination, resistance level, hr and power management
   const uint32_t m_targetSettingFeaturesCharacteristicsDef = 0b00000000000000000010000000001100;  // flags for Target Setting Features Field - power and resistance level, Indoor Bike Simulation Parameters 
 
   class ServerCallbacks : public BLEServerCallbacks {
@@ -337,12 +354,15 @@ struct EspSmartBike {
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
 #ifdef HAS_STEERING
     const char *STEERING_SERVICE_UUID = "347b0001-7635-408b-8918-8ff3949ce592", *STEERING_TX_CHAR_UUID = "347b0032-7635-408b-8918-8ff3949ce592", *STEERING_ANGLE_CHAR_UUID = "347b0030-7635-408b-8918-8ff3949ce592";
-    //#define STEERING_RX_CHAR_UUID "347b0031-7635-408b-8918-8ff3949ce592"  //write
+    const char *STEERING_RX_CHAR_UUID = "347b0031-7635-408b-8918-8ff3949ce592";  //write control point
     debugPrint("Define services...");
     BLEService *pSteerService = m_pBleServer->createService(STEERING_SERVICE_UUID);
     debugPrint("Define characteristics");
     m_pSteerTxChar = pSteerService->createCharacteristic(STEERING_TX_CHAR_UUID, BLECharacteristic::PROPERTY_INDICATE | BLECharacteristic::PROPERTY_READ);
     m_pSteerTxChar->addDescriptor(new BLE2902());
+    m_pSteerRxChar = pSteerService->createCharacteristic(STEERING_RX_CHAR_UUID, BLECharacteristic::PROPERTY_WRITE);
+    m_pSteerRxChar->addDescriptor(new BLE2902());
+    m_pSteerRxChar->setCallbacks(new SteeringControlCharacteristicCallbacks(m_pSteerTxChar));
     m_pSteerAngleChar = pSteerService->createCharacteristic(STEERING_ANGLE_CHAR_UUID, BLECharacteristic::PROPERTY_NOTIFY);
     m_pSteerAngleChar->addDescriptor(new BLE2902());
     debugPrint("Staring BLE service...");
@@ -387,7 +407,7 @@ struct EspSmartBike {
     pFitnessService->addCharacteristic(&m_fitnessMachineFeatureCharacteristics);
     pFitnessService->addCharacteristic(&m_resistanceLevelRangeCharacteristic);
     pFitnessService->addCharacteristic(&m_fitnessMachineControlPointCharacteristic);  
-    BLE2902* descr = new BLE2902();
+    BLE2902 *descr = new BLE2902();
     descr->setIndications(1); // default indications on  
     m_fitnessMachineControlPointCharacteristic.addDescriptor(descr);    
     pFitnessService->addCharacteristic(&m_fitnessMachineStatusCharacteristic);
@@ -679,7 +699,8 @@ struct EspSmartBike {
   uint8_t m_resistanceSet;
   int16_t m_powerSet, m_grade;
   void doFTMS(unsigned long nowTime) {
-    resistMng.tick();
+    if(m_lastPower != 0) //без движения педалей управление убежит далеко, т.к. нет информации о текущем сопротивлении
+      resistMng.tick();
     static unsigned long lastTx = nowTime;
     if (nowTime - lastTx > 200) {
       lastTx = nowTime;
@@ -692,7 +713,7 @@ struct EspSmartBike {
         (uint8_t)(m_avgCadence2x >> 8), 
         (uint8_t)(powerOut & 0xff), 
         (uint8_t)(powerOut >> 8), 
-        m_heartRateCache,
+        m_heartRateCache ? m_heartRateCache : (1 + ((nowTime / 1000) & 1)), //Zwift does not like 0 and 255, just ignores them 
       };
 #ifdef EXCLUSIVE_FTMS
       m_indoorBikeDataCharacteristic.setValue(indoorBikeDataCharacteristicData, sizeof(indoorBikeDataCharacteristicData));
@@ -705,6 +726,7 @@ struct EspSmartBike {
       uint8_t value[] = { 0x80, 0, 0x02 }; // confirmation data, default - 0x02 - Op "Code not supported", no app cares
       if (ctrl.m_size == 0) { debugPrint("Empty control request"); } else {
         value[1] = (uint8_t)ctrl.m_data8[0];
+        bool bStopped = (m_lastPower == 0);
         switch (value[1]) {
         default:
           debugPrint(ctrl.m_size, ctrl.m_data8, "Control request");
@@ -718,15 +740,15 @@ struct EspSmartBike {
           value[2] = 0x01;
           break;
         case 0x03:
-          m_grade = (ctrl.m_data8[2] << 8) + ctrl.m_data8[1];
+          m_grade = int16_t((ctrl.m_data8[2] << 8) | ctrl.m_data8[1]);
           m_grade *= 10;
           value[2] = 0x01;
-          resistMng.GoalGrade(m_grade);
+          resistMng.GoalGrade(m_grade, bStopped);
           debugPrint("inclination level: %d", m_grade);
           break;
         case 0x04:
           m_resistanceSet = ctrl.m_data8[1];
-          resistMng.GoalResistance(m_resistanceSet);
+          resistMng.GoalResistance(m_resistanceSet, bStopped);
           debugPrint("resistance level: %d", m_resistanceSet);
           value[2] = 0x01;
           break;
@@ -735,14 +757,14 @@ struct EspSmartBike {
           value[2] = 0x01;
           break;
         case 0x05:
-          m_powerSet = (ctrl.m_data8[2] << 8) + ctrl.m_data8[1];
-          resistMng.GoalPower(m_powerSet);
+          m_powerSet = int16_t((ctrl.m_data8[2] << 8) | ctrl.m_data8[1]);
+          resistMng.GoalPower(m_powerSet, bStopped);
           debugPrint("power level: %d", m_powerSet);
           value[2] = 0x01;
           break;
         case 0x11: {
-            m_grade = (ctrl.m_data8[4] << 8) + ctrl.m_data8[3];
-            resistMng.GoalGrade(m_grade);
+            m_grade = int16_t((ctrl.m_data8[4] << 8) | ctrl.m_data8[3]);
+            resistMng.GoalGrade(m_grade, bStopped);
             debugPrint("status update: grade=%d", m_grade);
             uint8_t statusValue[7] = { 0x12, (uint8_t)ctrl.m_data8[1], (uint8_t)ctrl.m_data8[2], (uint8_t)ctrl.m_data8[3], (uint8_t)ctrl.m_data8[4], (uint8_t)ctrl.m_data8[5], (uint8_t)ctrl.m_data8[6] };
             m_fitnessMachineStatusCharacteristic.setValue(statusValue, 7); // Fitness Machine Status updated, no app cares
