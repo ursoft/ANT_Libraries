@@ -122,7 +122,8 @@ float CalcNewSteer() {
 void PatchMainModule(const char* name, // "Trial.01",
     size_t nBytes, //10,
     const char* from, //"\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
-    const char* to //"\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+    const char* to, //"\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+    size_t add = 0
 ) {
     char buf[1024];
     HMODULE hMain = GetModuleHandle(NULL);
@@ -142,7 +143,7 @@ void PatchMainModule(const char* name, // "Trial.01",
         else
             mbi = mbi2;
     }
-    SIZE_T textLength = mbi.RegionSize;
+    SIZE_T textLength = mbi.RegionSize + add;
     uint8_t *foundAt = NULL, *curPtr = (uint8_t*)mbi.BaseAddress;
     for (size_t i = 0; i < textLength - nBytes; i++) {
         if (0 == memcmp(curPtr + i, from, nBytes)) {
@@ -200,12 +201,12 @@ int ReplaceFloat(float *fptr, DWORD *offset, bool back, float repl)
 
 int TryFloatPatch(uint8_t* foundAt, float search1, float repl1, float search2, float repl2) {
     int ret = 0;
-    for (int back = 8; back < 48 && ret < 2; back++) {
+    for (int back = 4; back < 32 && ret < 2; back++) {
         uint8_t* tryFrom = foundAt - back;
         if (tryFrom[0] == 0xF3 && tryFrom[1] == 0x0f) {
             DWORD* offset = (DWORD *)tryFrom + 1;
             float *fptr = (float *)(tryFrom + 8 + *offset);
-            if (tryFrom[2] == 0x10 && tryFrom[3] == 0x0d) {
+            if (tryFrom[2] == 0x10 && tryFrom[3] == 0x1d) {
                 if (IsBadReadPtr(fptr, 4)) continue;
                 if (search1 == *fptr) {
                     ret += ReplaceFloat(fptr, offset, search1 > repl1, repl1);
@@ -245,29 +246,32 @@ void PatchMainModuleNeo(const char* name,
     }
     SIZE_T textLength = mbi.RegionSize;
     const byte marker[] = { 
-        0x0f, 0x28, 0xf1,       // movaps xmm6, xmm1
-        0xf3, 0x0f, 0x5c, 0xf0, // subss xmm 6, xmm0
-        0x0f, 0x57              // xorps xmm0, ?
+        0x0f, 0x28, 0xf3,       // movaps xmm6, xmm3
+        0xf3, 0x0f, 0x5c, 0xf0, // subss xmm6, xmm0
+        0xf3, 0x0f, 0x10, 0x05  // movss xmm0, ?
     };
     uint8_t *curPtr = (uint8_t*)mbi.BaseAddress, *foundAt2 = NULL, *foundAt1 = NULL;
     for (size_t i = 48; i < textLength; i++) {
         if (0 == memcmp(curPtr + i, marker, sizeof(marker))) {
-            switch (*(curPtr + i + sizeof(marker))) {
-            case 0xd2:
+            sprintf(buf, "ZWIFT_PATCH.%s marker found at offset 0x%X\n", name, 
+                unsigned(curPtr + i + 0x400 - (uint8_t*)mbi.BaseAddress));
+            OutputDebugString(buf);
+            switch (*(curPtr + i - 0x15)) {
+            case 0xF3:
                 if (foundAt2 == NULL) {
                     foundAt2 = curPtr + i;
                     break;
                 }
-                sprintf(buf, "ZWIFT_PATCH.%s 0xd2 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                sprintf(buf, "ZWIFT_PATCH.%s 0xF3 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
                 ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
-            case 0xc0:
+            case 0x41:
                 if (foundAt1 == NULL) {
                     foundAt1 = curPtr + i;
                     break;
                 }
-                sprintf(buf, "ZWIFT_PATCH.%s 0xc0 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
+                sprintf(buf, "ZWIFT_PATCH.%s 0x41 multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
                 ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
                 return;
@@ -322,6 +326,12 @@ INT_PTR OnAttach() {
             "\xbb\x03\x0\x0\x0\xe9\x80\x0\x0\x0"
         );
         PatchMainModuleNeo("Neo80,100->20,80", 100.0, 80.0, 20.0, 60.0);
+        PatchMainModule(
+            "OldHome", 24,
+            "game_1_17_noesis_enabled",
+            "game_1_17_noesis!enabled",
+            4096 * 1132 /* rdata segment length */
+        );
     }
     return 0;
 }
