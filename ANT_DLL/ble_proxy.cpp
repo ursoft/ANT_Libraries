@@ -20,7 +20,7 @@ const char *SCHWINN_SHORT_CHAR_EVENT = "0x5c7d82a0";
 const char *SCHWINN_CHAR_SRD0 = "6be8f580-9803-11e3-ab03-0002a5d5c51b";
 const char *SCHWINN_SHORT_CHAR_SRD0 = "0x6be8f580";
 
-HMODULE org = LoadLibraryA("BleWin10Lib.org.dll");
+HMODULE org = LoadLibraryA("BleWin10Lib_V2.org.dll");
 typedef bool (*fptr_bool_ptr)(void *);
 typedef bool (*fptr_bool_ptr3)(void *, void *, void *);
 typedef void (*fptr_void_ptr)(void *);
@@ -306,19 +306,19 @@ INT_PTR OnAttach() {
     const char* patches_str = getenv("ZWIFT_PATCHES");
     if (patches_str == NULL || *patches_str == '1') {
         PatchMainModule(
-            "Trial.01", 10,
-            "\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
-            "\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
+            "Trial.01", 9,
+            "\xda\x04\x0\x0\xf\xb6\x13\x84\xd2",
+            "\xda\x04\x0\x0\xf\xb6\x13\xb2\x02"
         );
         PatchMainModule(
             "Trial.02", 8,
-            "\x48\x8d\x4d\x9f\x41\x83\xcf\x08",
-            "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+            "\x48\x8d\x4d\x97\x41\x83\xcf\x08",
+            "\x48\x8d\x4d\x97\x90\x90\x90\x90"
         );
         PatchMainModule(
             "Trial.03", 8,
-            "\x48\x8d\x4d\x9f\x41\x83\xcf\x10",
-            "\x48\x8d\x4d\x9f\x90\x90\x90\x90"
+            "\x48\x8d\x4d\x97\x41\x83\xcf\x10",
+            "\x48\x8d\x4d\x97\x90\x90\x90\x90"
         );
         PatchMainModule(
             "Trial.04", 10,
