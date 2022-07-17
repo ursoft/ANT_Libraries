@@ -275,7 +275,7 @@ void EmitZwiftKeyPress(WORD key) {
     if(zwiftWindow == NULL)
         zwiftWindow = FindWindow(NULL, "Zwift");
 
-    if (SetForegroundWindow(zwiftWindow)) {
+    /*if (*/SetForegroundWindow(zwiftWindow);/*)*/ { // may be full screen and no window
         INPUT inputs[2] = {};
         inputs[0].type = INPUT_KEYBOARD;
         inputs[0].ki.wVk = key;

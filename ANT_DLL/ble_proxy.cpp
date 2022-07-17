@@ -25,6 +25,34 @@ typedef bool (*fptr_bool_ptr)(void *);
 typedef bool (*fptr_bool_ptr3)(void *, void *, void *);
 typedef void (*fptr_void_ptr)(void *);
 typedef void (*fptr_void_void)();
+typedef int (*EVP_CipherInit_ex)(void *cip_ctx, void *cip_type, void *eng_impl, uint8_t *key, uint8_t *iv, int enc);
+EVP_CipherInit_ex orgEVP_CipherInit_ex;
+char *dumpHex(char *dest, const char *name, const uint8_t *data, int data_size) {
+    if (data) {
+        dest += sprintf(dest, " %s: ", name);
+        for (int i = 0; i < data_size; i++) {
+            dest += sprintf(dest, "%02X", data[i]);
+        }
+    } else dest += sprintf(dest, " %s: (null)", name);
+    return dest;
+}
+int newEVP_CipherInit_ex(void* cip_ctx, void* cip_type, void* eng_impl, uint8_t* key, uint8_t* iv, int enc) {
+    char buf[1024];
+    char* pBuf = buf + sprintf(buf, enc ? "zwEncryptInit_ex %p" : "zwDecryptInit_ex %p", cip_ctx);
+    pBuf = dumpHex(pBuf, "key", key, 16);
+    pBuf = dumpHex(pBuf, "iv", iv, 12);
+    pBuf += sprintf(pBuf, "\n");
+    OutputDebugStringA(buf);
+    if (orgEVP_CipherInit_ex)
+        return orgEVP_CipherInit_ex(cip_ctx, cip_type, eng_impl, key, iv, enc);
+    return 0;
+}
+int newEVP_DecryptInit_ex(void *cip_ctx, void *cip_type, void *eng_impl, uint8_t *key, uint8_t *iv) {
+    return newEVP_CipherInit_ex(cip_ctx, cip_type, eng_impl, key, iv, 0);
+}
+int newEVP_EncryptInit_ex(void *cip_ctx, void *cip_type, void *eng_impl, uint8_t *key, uint8_t *iv) {
+    return newEVP_CipherInit_ex(cip_ctx, cip_type, eng_impl, key, iv, 1);
+}
 
 std::unique_ptr<std::thread> glbSteeringThread;
 HANDLE glbWakeSteeringThread = INVALID_HANDLE_VALUE;
@@ -119,7 +147,7 @@ float CalcNewSteer() {
     return glbSteeringCurrent;
 }
 
-void PatchMainModule(const char* name, // "Trial.01",
+const uint8_t *PatchMainModule(const char* name, // "Trial.01",
     size_t nBytes, //10,
     const char* from, //"\x04\x0\x0\xf\xb6\x17\x84\xd2\x78\x07",
     const char* to, //"\x04\x0\x0\xf\xb6\x17\xb2\x02\x78\x07"
@@ -134,7 +162,7 @@ void PatchMainModule(const char* name, // "Trial.01",
         sprintf(buf, "ZWIFT_PATCH.%s VirtualQuery failed\n", name);
         OutputDebugString(buf);
         ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
-        return;
+        return NULL;
     }
     MEMORY_BASIC_INFORMATION mbi2 = {};
     while(VirtualQuery((const uint8_t *)mbi.BaseAddress - 1, &mbi2, sizeof(mbi2))) {
@@ -153,7 +181,7 @@ void PatchMainModule(const char* name, // "Trial.01",
                 sprintf(buf, "ZWIFT_PATCH.%s multifound in [%p, %d]\n", name, mbi.BaseAddress, (int)textLength);
                 OutputDebugString(buf);
                 ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
-                return;
+                return NULL;
             }
         }
     }
@@ -171,6 +199,7 @@ void PatchMainModule(const char* name, // "Trial.01",
         OutputDebugString(buf);
         ::MessageBoxA(NULL, buf, "Zwift", MB_ICONERROR);
     }
+    return foundAt;
 }
 
 int ReplaceFloat(float *fptr, DWORD *offset, bool back, float repl)
@@ -331,6 +360,48 @@ INT_PTR OnAttach() {
             "game_1_17_noesis_enabled",
             "game_1_17_noesis!enabled",
             4096 * 1132 /* rdata segment length */
+        );
+    }
+    const char* zd_str = getenv("ZWIFT_DEBUG");
+    if (zd_str != NULL && *zd_str == '1') {
+        //hook static EVP_DecryptInit_ex compiled into ZwiftApp.exe
+/*; __int64 __fastcall EVP_DecryptInit_ex(int, int, int, int, void *)
+EVP_DecryptInit_ex proc near            ; CODE XREF: Codec_decrypt+93↑p
+                                        ; Codec_init+10A↑p ...
+
+Src= qword ptr -18h
+var_10= dword ptr -10h
+arg_20= qword ptr  28h
+
+B8 38 00 00 00		    mov     eax, 38h
+E8 36 BB F7 FF		    call    __alloca_probe
+48 2B E0		        sub     rsp, rax
+48 8B 44 24 60		    mov     rax, [rsp+38h+arg_20]
+C7 44 24 28 00 00 00 00	mov     [rsp+38h+var_10], 0             ; int
+48 89 44 24 20		    mov     [rsp+38h+Src], rax              ; Src
+E8 CC F9 FF FF		    call    EVP_CipherInit_ex
+48 83 C4 38		        add     rsp, 38h
+C3			            retn
+EVP_DecryptInit_ex endp */
+        char jmpNewXxcryptInit_ex[] = "\xff\x25\x0\x0\x0\x0" //6 bytes - jmp qword ptr [rip]
+            "address"; //8 bytes
+        void *newXxcryptInit_exPtr = newEVP_DecryptInit_ex;
+        memcpy(jmpNewXxcryptInit_ex + 6, &newXxcryptInit_exPtr, 8);
+        const uint8_t *place = PatchMainModule(
+            "Hook.EVP_DecryptInit_ex", 6 + 8,
+            "\xB8\x38\x0\x0\x0\xE8\x36\xBB\xF7\xFF\x48\x2B\xE0\x48",
+            jmpNewXxcryptInit_ex
+        );
+        if (place) {
+            int offset = *(int*)(place + 32); //should be 0xFFFFF9CC
+            orgEVP_CipherInit_ex = (EVP_CipherInit_ex)(place + offset + 0x24);
+        }
+        newXxcryptInit_exPtr = newEVP_EncryptInit_ex;
+        memcpy(jmpNewXxcryptInit_ex + 6, &newXxcryptInit_exPtr, 8);
+        PatchMainModule(
+            "Hook.EVP_EncryptInit_ex", 6 + 8,
+            "\xB8\x38\x0\x0\x0\xE8\x6\xB7\xF7\xFF\x48\x2B\xE0\x48",
+            jmpNewXxcryptInit_ex
         );
     }
     return 0;
