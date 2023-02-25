@@ -177,6 +177,7 @@ BOOL ANT_InitExt(UCHAR ucUSBDeviceNum, ULONG ulBaudrate, UCHAR ucPortType_, UCHA
    }
 
    //Let Serial know about Framer.
+   //for(int i = 1; i < 100; i++) Sleep(1000);
    pclSerialObject->SetCallback(pclMessageObject);
 
    //Open Serial.

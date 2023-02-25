@@ -11,6 +11,7 @@
 #include <bluetoothleapis.h>
 #include <BthLEDef.h>
 #include <SetupAPI.h>
+#include <string>
 
 bool glbNoSchwinn = true;
 const char *SCHWINN_SERV = "3bf58980-3a2f-11e6-9011-0002a5d5c51b";

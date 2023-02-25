@@ -109,7 +109,7 @@ class LibusbLibrary
    ReapAsyncNocancel_t ReapAsyncNocancel;
    CancelAsync_t CancelAsync;
    FreeAsync_t FreeAsync;
-
+   bool OK() const { return m_ok; }
   private:
 
    LibusbError::Enum LoadFunctions();
@@ -122,6 +122,7 @@ class LibusbLibrary
 
    HMODULE hLibHandle;
    static BOOL bStaticSet;
+   bool m_ok = false;
 
    //!!Could dynamically make all instances and push them onto a static list to delete when we get to it
 };

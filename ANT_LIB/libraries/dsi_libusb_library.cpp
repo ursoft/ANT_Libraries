@@ -27,6 +27,10 @@ BOOL LibusbLibrary::Load(auto_ptr<const LibusbLibrary>& clAutoLibrary_)  //!!Sho
    try
    {
       clAutoLibrary_.reset(new LibusbLibrary());
+      if (!clAutoLibrary_->OK()) {
+          clAutoLibrary_.reset(NULL);
+          return FALSE;
+      }
    }
    catch(...)
    {
@@ -82,10 +86,11 @@ LibusbLibrary::LibusbLibrary() //throw(LibusbError::Enum&)
 
    //load library
    LibusbError::Enum ret = LoadFunctions();
-   if(ret != LibusbError::NONE)
-      throw(ret);
-
-   return;
+   if (ret != LibusbError::NONE) {
+       m_ok = false;
+       return;
+   }
+   m_ok = true;
 }
 
 LibusbLibrary::~LibusbLibrary() throw()
