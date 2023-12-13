@@ -489,12 +489,33 @@ float UrsoftKerner::operator ()(UChar ch) {
     }
     return 0;
 }
+struct UrsoftFontPatcher : public UrsoftKerner {
+    UrsoftFontPatcher(CFont2D &f) : UrsoftKerner(f) {
+        //все цифры одинаковой ширины и посередине
+        int width = 100 + 3, *pShift;
+        if (f.Is105()) {
+            static int sh105[]{ -1,-2,0,-4,-1,-2,-2,-4,-2,0 };
+            pShift = sh105;
+        } else if (f.Is54()) {
+            width = 70 + 1;
+            static int sh54[]{ 1,0,1,-1,-1,0,0,-1,0,0 };
+            pShift = sh54;
+        } else return;
+        for (auto ch = L'0'; ch <= L'9'; ch++) {
+            auto gidx = f.m_info.m_glyphIndexes[ch];
+            if (gidx != 0xFFFF) {
+                f.m_glyphs[gidx].m_width = width / 2048.0f;
+                f.m_glyphs[gidx].m_left += pShift[ch - L'0'] / 2048.0f;
+            }
+        }
+    }
+};
 UrsoftKerner &UrsoftKerner::stSelect(CFont2D *t) {
     if (t->Is105()) {
-        static UrsoftKerner _105(*t);
+        static UrsoftFontPatcher _105(*t);
         return _105;
     } else if (t->Is54()) {
-        static UrsoftKerner _54(*t);
+        static UrsoftFontPatcher _54(*t);
         return _54;
     }
     static UrsoftKerner others(*t);
@@ -1009,7 +1030,12 @@ void loadKerns(const char *binFileName, std::map<std::pair<UChar, UChar>, float>
                 RealKernItem rki;
                 for (int k = 0; k < h.m_realKerns; k++) {
                     fread(&rki, sizeof(RealKernItem), 1, f);
-                    (*pDest)[std::make_pair(rki.m_prev, rki.m_cur)] = rki.m_corr / 2048.0f;
+                    bool prevNotDigit = rki.m_prev < '0' || rki.m_prev > '9';
+                    bool curNotDigit = rki.m_cur < '0' || rki.m_cur > '9';
+                    if (prevNotDigit && curNotDigit)
+                        (*pDest)[std::make_pair(rki.m_prev, rki.m_cur)] = rki.m_corr / 2048.0f;
+                    else if (!prevNotDigit && (rki.m_cur == '.' || rki.m_cur == ':'))
+                        (*pDest)[std::make_pair(rki.m_prev, rki.m_cur)] = 4 / 2048.0f;
                 }
             } else {
                 //Log("Unknown font version number from %s(%x)\n", name_, ver);
